@@ -626,6 +626,32 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(admin_state())
         return self._api_error("not found", 404)
 
+    def _head_404(self):
+        self.send_response(404)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def do_HEAD(self):
+        parsed = urlparse(self.path)
+        raw_path = unquote(parsed.path or "/")
+        if "\x00" in raw_path or "\\" in raw_path:
+            return self._head_404()
+        norm = posixpath.normpath(raw_path)
+        if not norm.startswith("/"):
+            norm = "/" + norm
+        parts = [p for p in norm.split("/") if p]
+        if any(p.startswith(".") for p in parts):
+            return self._head_404()
+        path = strip_base(norm)
+        if path.startswith(API_PREFIX):
+            return self._head_404()
+        if path == "/":
+            path = "/index.html"
+        if not path.lower().endswith(STATIC_EXTS):
+            return self._head_404()
+        self.path = quote(path, safe="/")
+        return super().do_HEAD()
+
     def do_POST(self):
         path = strip_base(urlparse(self.path).path)
         if not path.startswith(API_PREFIX):
