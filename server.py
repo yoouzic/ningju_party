@@ -39,6 +39,10 @@ if ":" in BASE_PATH or "\\" in BASE_PATH or " " in BASE_PATH:
     BASE_PATH = ""
 API_PREFIX = "/api/" if BASE_PATH else "/pixel-rush/api/"
 DB_LOCK = threading.RLock()
+_THREAD = threading.local()
+_SETTINGS_CACHE = {}
+_SECRET_CACHE = None
+_BOARD_CACHE = {"key": None, "at": 0.0, "data": None}
 
 TOP_N_DEFAULT = 10
 DURATION_DEFAULT = 45
@@ -72,10 +76,14 @@ def strip_base(path):
 
 
 def db():
-    conn = sqlite3.connect(DB_PATH, timeout=15, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout=8000")
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn = getattr(_THREAD, "conn", None)
+    if conn is None:
+        conn = sqlite3.connect(DB_PATH, timeout=15, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=8000")
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        _THREAD.conn = conn
     return conn
 
 
@@ -89,37 +97,50 @@ def tx():
         except Exception:
             conn.rollback()
             raise
-        finally:
-            conn.close()
 
 
 def fetch(sql, args=(), one=False):
-    with tx() as c:
-        cur = c.execute(sql, args)
-        rows = cur.fetchall() if cur.description else []
+    cur = db().execute(sql, args)
+    rows = cur.fetchall() if cur.description else []
     return (rows[0] if rows else None) if one else rows
 
 
 def get_setting(key, default=None):
+    if key in _SETTINGS_CACHE:
+        return _SETTINGS_CACHE[key]
     r = fetch("SELECT value FROM settings WHERE key = ?", (key,), one=True)
-    return r["value"] if r else default
+    if r:
+        _SETTINGS_CACHE[key] = r["value"]
+        return r["value"]
+    return default
 
 
 def set_setting(key, value):
+    global _SECRET_CACHE
     with tx() as c:
         c.execute("INSERT INTO settings(key,value) VALUES(?,?) "
                   "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(value)))
+    _SETTINGS_CACHE[key] = str(value)
+    if key == "secret":
+        _SECRET_CACHE = None
 
 
 def secret_bytes():
+    global _SECRET_CACHE
+    if _SECRET_CACHE is not None:
+        return _SECRET_CACHE
     s = get_setting("secret")
     if not s:
         s = secrets.token_hex(32)
         set_setting("secret", s)
-    return bytes.fromhex(s)
+    _SECRET_CACHE = bytes.fromhex(s)
+    return _SECRET_CACHE
 
 
 def init_db():
+    global _SECRET_CACHE
+    _SETTINGS_CACHE.clear()
+    _SECRET_CACHE = None
     with tx() as c:
         c.executescript("""
         CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);
@@ -156,6 +177,9 @@ def init_db():
         CREATE TABLE IF NOT EXISTS audit(
             id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT, detail TEXT, at REAL);
         """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_steps_rank ON steps(round_id, finished_at, count)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_quiz_rank ON quiz_attempts(round_id, correct_count, elapsed_ms)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_draws_card ON draws(card_no, prize_id)")
         for i in range(CARD_TOTAL):
             c.execute("INSERT OR IGNORE INTO cards(no) VALUES(?)", ("%03d" % i,))
         if not c.execute("SELECT 1 FROM prizes LIMIT 1").fetchone():
@@ -344,12 +368,18 @@ def open_round(kind, duration=None, title=""):
     return {"round_id": rid, "kind": kind, "status": "running", "duration": dur}, 200
 
 
-def board_payload(kind=None):
-    r = current_round()
+def board_payload(kind=None, round_row=None):
+    r = round_row if round_row is not None else current_round()
     k = kind or (r["kind"] if r else "shake")
     rid = r["id"] if r else 0
+    key = (k, rid, r["status"] if r else "")
+    now = time.time()
+    if _BOARD_CACHE["key"] == key and now - _BOARD_CACHE["at"] < 0.5:
+        return _BOARD_CACHE["data"]
     rows = rank_rows(k, rid) if rid else []
-    return {"kind": k, "round": round_view(r), "entries": rows[:50], "total": len(rows)}
+    data = {"kind": k, "round": round_view(r), "entries": rows[:50], "total": len(rows)}
+    _BOARD_CACHE.update({"key": key, "at": now, "data": data})
+    return data
 
 
 def player_round_result(player_id, round_row):
@@ -380,9 +410,9 @@ def player_round_result(player_id, round_row):
 
 def status_payload(handler):
     r = current_round()
-    players = fetch("SELECT COUNT(*) AS n FROM players", one=True)["n"]
-    cards_used = fetch("SELECT COUNT(*) AS n FROM cards WHERE owner_id IS NOT NULL", one=True)["n"]
-    rewards = fetch("SELECT COUNT(*) AS n FROM rewards", one=True)["n"]
+    counts = fetch("SELECT (SELECT COUNT(*) FROM players) AS players, "
+                   "(SELECT COUNT(*) FROM cards WHERE owner_id IS NOT NULL) AS cards_used, "
+                   "(SELECT COUNT(*) FROM rewards) AS rewards", one=True)
     draws = fetch("SELECT d.card_no, p.name AS player, pr.name AS prize, d.drawn_at, d.balls "
                   "FROM draws d LEFT JOIN players p ON p.id=d.player_id "
                   "LEFT JOIN prizes pr ON pr.id=d.prize_id ORDER BY d.id DESC LIMIT 12")
@@ -395,12 +425,16 @@ def status_payload(handler):
             result = player_round_result(p["id"], r)
             if result:
                 me["result"] = result
+    board = board_payload(r["kind"] if r else "shake", r)
+    board_view = {"kind": board["kind"], "round": board["round"],
+                  "entries": board["entries"][:10], "total": board["total"]}
     return {
         "server_time": time.time(),
         "round": round_view(r),
-        "board": board_payload(r["kind"] if r else "shake"),
-        "stats": {"players": players, "cards_used": cards_used, "cards_total": CARD_TOTAL,
-                  "rewards": rewards, "gift_total": public_int("gift_total", GIFT_TOTAL)},
+        "board": board_view,
+        "stats": {"players": counts["players"], "cards_used": counts["cards_used"],
+                  "cards_total": CARD_TOTAL, "rewards": counts["rewards"],
+                  "gift_total": public_int("gift_total", GIFT_TOTAL)},
         "draws": [dict(x) for x in draws],
         "me": me,
         "pages": {"shake": "/", "quiz": "/quiz.html", "board": "/board.html", "admin": "/admin.html"},
@@ -462,6 +496,7 @@ def qr_svg(text):
 
 class Handler(SimpleHTTPRequestHandler):
     server_version = "NingjuParty/2.0"
+    protocol_version = "HTTP/1.1"
 
     def _json(self, obj, status=200):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
@@ -794,8 +829,16 @@ class Handler(SimpleHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         msg = fmt % args
-        if "/api/" in msg or not msg.startswith('"GET '):
+        if "/api/" in msg:
+            return
+        if not msg.startswith('"GET '):
             super().log_message(fmt, *args)
+
+
+class PartyServer(ThreadingHTTPServer):
+    daemon_threads = True
+    request_queue_size = 256
+    allow_reuse_address = True
 
 
 def lan_addresses():
@@ -824,7 +867,7 @@ def main():
     args = ap.parse_args()
     pwd = init_db()
     handler = functools.partial(Handler, directory=ROOT)
-    server = ThreadingHTTPServer((args.host, args.port), handler)
+    server = PartyServer((args.host, args.port), handler)
     print("=" * 70)
     print("  21届凝聚力晚会 · 互动系统  |  ① 摇一摇 ② 答题竞速 ③ 幸运大抽奖")
     print("  数据库:", DB_PATH)

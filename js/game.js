@@ -343,7 +343,7 @@
         if (s.online) {
             /* 正式模式：权威进度来自服务端累计步数，本地只做表现 */
             s.syncTimer -= dt;
-            if (s.syncTimer <= 0) { s.syncTimer = 0.18; this.syncSteps(); }
+            if (s.syncTimer <= 0) { s.syncTimer = 0.4; this.syncSteps(); }
         } else {
             s.progress += s.speed * C.PROGRESS_PER_SPEED * mult * dt;
             s.rank = R.rankOf(R.raceScoreOf(s));
