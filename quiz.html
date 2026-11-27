@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2e222f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%232e222f'/%3E%3Crect x='6' y='2' width='4' height='12' fill='%23f9c22b'/%3E%3Crect x='2' y='6' width='12' height='4' fill='%23f9c22b'/%3E%3Crect x='4' y='4' width='8' height='8' fill='%23f04f78'/%3E%3C/svg%3E">
+<title>线上答题 竞速 · 像素冲刺 | 21届凝聚力晚会</title>
+<!--
+  ============================================================================
+  pixel-rush / 「线上答题 竞速」—— 晚会第②环节答题页
+  ----------------------------------------------------------------------------
+  · 主持人用 /admin.html 开启答题轮次，服务端下发题目（不含答案）。
+  · 本页只做三件事：登录身份、渲染题目、提交选项文本；判分与名次全部由
+    server.py 依据 quiz_questions.answer 与 elapsed_ms 决定，客户端不可伪造。
+  · 多选答案用「|」连接选项文本，不是 A/B/C/D 字母。
+  · file:// 打开为练习模式：只作版面预演，明确标注不支持答题。
+  ============================================================================
+-->
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/font.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/pixel-ui.css">
+<link rel="stylesheet" href="css/party.css">
+<link rel="stylesheet" href="css/quiz.css">
+</head>
+<body>
+<header class="topbar">
+    <div class="topbar__inner">
+        <div class="deco" aria-hidden="true">
+            <i class="px-icon" data-icon="star" data-scale="2" style="right:34%;top:16px"></i>
+            <i class="px-icon" data-icon="star" data-scale="1" style="right:26%;top:48px;animation-delay:.4s"></i>
+            <i class="px-icon" data-icon="lantern" data-scale="3" style="right:8%;top:8px"></i>
+        </div>
+        <div class="logo"><i class="px-icon" data-icon="card" data-scale="4"></i></div>
+        <div class="topbar__text">
+            <p class="kicker">
+                <span>21届凝聚力晚会</span><span>环节 02</span>
+                <span class="plate plate--quiet" id="mode-badge">连接中</span>
+            </p>
+            <h1>线上答题 <em>竞速</em></h1>
+            <p class="lede">登录 → 主持人开启第②环节 → 逐题作答 → 正确数优先，同分比用时</p>
+        </div>
+        <div class="player-chip"><span>当前玩家</span><b id="header-player">未登录</b></div>
+    </div>
+</header>
+
+<main class="party-main">
+    <div class="party-bar" id="party-state" role="status" aria-live="polite">连接晚会服务端…</div>
+
+    <div class="party-grid">
+        <!-- ---------------------------------------------------- 身份 -->
+        <section class="party-card" aria-labelledby="identity-title">
+            <h2 class="sec" id="identity-title"><span class="sq sq--pink" aria-hidden="true"></span>身份</h2>
+
+            <form id="login-form" novalidate>
+                <label class="form-row">
+                    <span>信息员昵称</span>
+                    <input id="player-name" type="text" maxlength="12" autocomplete="off" placeholder="例如 小凝">
+                </label>
+                <label class="form-row">
+                    <span>信息员编号（可选，用于身份去重）</span>
+                    <input id="player-code" type="text" maxlength="24" autocomplete="off" placeholder="例如 021">
+                </label>
+                <div class="form-actions">
+                    <button class="btn btn--primary btn--block" id="btn-login" type="submit"><span class="caret" aria-hidden="true">▶</span><span>登录答题</span></button>
+                </div>
+            </form>
+
+            <div id="identity" class="hidden">
+                <p class="wait__who">信息员 <b id="who-name">—</b> · 已加入晚会</p>
+                <p class="card-tag card-tag--big" id="who-card">刮刮乐编号：---</p>
+                <div class="form-actions">
+                    <button class="btn" id="btn-change" type="button">更换身份</button>
+                </div>
+            </div>
+
+            <p class="party-msg" id="auth-msg" role="status" aria-live="polite"></p>
+        </section>
+
+        <!-- ---------------------------------------------------- 环节状态 -->
+        <section class="party-card" aria-labelledby="round-title">
+            <h2 class="sec" id="round-title"><span class="sq sq--blue" aria-hidden="true"></span>环节状态</h2>
+            <div class="party-kv">
+                <div><span>当前状态</span><b id="round-state">等待</b></div>
+                <div><span>剩余秒数</span><b id="round-time">--</b></div>
+                <div><span>我的名次</span><b id="my-rank">--</b></div>
+            </div>
+            <p class="sub" id="status-text">正在连接晚会服务端…</p>
+        </section>
+    </div>
+
+    <!-- ---------------------------------------------------- 题目与结果 -->
+    <section class="party-card" aria-labelledby="quiz-title">
+        <h2 class="sec" id="quiz-title"><span class="sq sq--yellow" aria-hidden="true"></span>在线答题</h2>
+        <p class="sub" id="quiz-hint">登录后等待主持人开启第②环节</p>
+
+        <form id="quiz-form" class="hidden" novalidate>
+            <div id="quiz-list"></div>
+            <div class="form-actions">
+                <button class="btn btn--primary btn--block" id="btn-submit" type="submit">提交答案</button>
+            </div>
+        </form>
+
+        <div id="quiz-result" class="hidden">
+            <div class="party-kv">
+                <div><span>答对</span><b id="result-correct">--</b></div>
+                <div><span>用时</span><b id="result-elapsed">--</b></div>
+                <div><span>名次</span><b id="result-rank">待结算</b></div>
+            </div>
+            <p class="party-msg" id="result-note">等待主持人结算</p>
+        </div>
+    </section>
+
+    <!-- ---------------------------------------------------- 答题榜 -->
+    <section class="party-card" aria-labelledby="board-title">
+        <h2 class="sec" id="board-title"><span class="sq sq--green" aria-hidden="true"></span>答题榜 · 前 10 名</h2>
+        <ol class="party-list" id="quiz-board" aria-live="polite"></ol>
+        <p class="sub">正确数优先，同分比用时；前 10 名由主持人在环节结束后统一锁定并发奖。</p>
+    </section>
+</main>
+
+<footer class="site-footer">
+    <nav class="pnav" aria-label="页面切换">
+        <a href="index.html">① 摇一摇</a>
+        <a href="quiz.html" class="is-current" aria-current="page">② 答题</a>
+        <a href="board.html">大屏</a>
+    </nav>
+    <span>配色 Resurrect 64 · 字体 Zpix</span>
+</footer>
+
+<!-- 经典脚本按依赖顺序加载：file:// 双击即可打开，无需构建 -->
+<script src="js/utils.js"></script>
+<script src="js/sprites.js"></script>
+<script src="js/net.js"></script>
+<script src="js/quiz.js"></script>
+</body>
+</html>

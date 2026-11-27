@@ -1,0 +1,53 @@
+/* ==========================================================================
+   quiz.css —— ② 答题页专属微调
+   ----------------------------------------------------------------------------
+   只补 party.css 未覆盖的触控尺寸、空态对齐与窄屏读数，不新增配色与组件语言。
+   ========================================================================== */
+
+/* 卡片正文说明文字（party.css 只为 .pane 内的 .sub 上色） */
+.party-card .sub { color: var(--ink-3); line-height: var(--lh-1); }
+.party-card .sub.is-err { color: var(--red-1); }
+.party-card .sub.is-ok { color: var(--green-1); }
+
+/* 表单内部沿用卡片 12px 的像素网格节奏 */
+#login-form > * + *,
+#quiz-form > * + * { margin-top: 12px; }
+
+/* 手机端输入框保持 48px 触控高度 */
+#login-form .form-row input { min-height: 48px; }
+
+/* party.css 把 .form-actions .btn 压到 40px，答题页恢复 48px 触控高度 */
+.party-card .form-actions .btn { min-height: 48px; }
+
+/* 题干允许长英文 / URL 断行，避免横向滚动 */
+.quiz-q__prompt { overflow-wrap: anywhere; }
+
+/* 键盘焦点与选中态同样明显 */
+.quiz-opt:has(input:focus-visible) {
+    outline: 4px solid var(--yellow-4);
+    outline-offset: 0;
+}
+
+/* 答题榜空态：li 继承 .party-list li 的 flex，需要显式居中 */
+.party-list li.party-empty {
+    justify-content: center;
+    min-height: 48px;
+    background: var(--paper-2);
+    color: var(--ink-3);
+    text-align: center;
+}
+
+/* 页脚导航达到 48px 触控高度（party.css 的链接只有 24px 高） */
+.pnav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 48px;
+    padding: 0 12px;
+}
+
+/* 窄屏下三格读数保持一行，数值降一档字号 */
+@media (max-width: 420px) {
+    .party-card .party-kv { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .party-card .party-kv > div { padding: 4px; }
+    .party-card .party-kv b { font-size: var(--fs-1); line-height: var(--lh-2); }
+}
