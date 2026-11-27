@@ -35,7 +35,14 @@
             init.headers['Content-Type'] = 'application/json';
             init.body = JSON.stringify(opts.body);
         }
+        var timer = 0;
+        if (global.AbortController) {
+            var ctrl = new global.AbortController();
+            init.signal = ctrl.signal;
+            timer = global.setTimeout(function () { ctrl.abort(); }, 6000);
+        }
         return global.fetch(API + route, init).then(function (r) {
+            if (timer) global.clearTimeout(timer);
             if (!r.ok) {
                 return r.json().catch(function () { return {}; }).then(function (d) {
                     var e = new Error(d.error || ('HTTP ' + r.status));
@@ -44,6 +51,9 @@
                 });
             }
             return r.json();
+        }, function (e) {
+            if (timer) global.clearTimeout(timer);
+            throw e;
         });
     }
 
