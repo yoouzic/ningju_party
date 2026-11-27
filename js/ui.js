@@ -314,6 +314,7 @@
             }
 
             function showResult(result, record) {
+                record = record || ST.load();
                 var v = R.verdict(result);
                 /* game.reset() 会清掉 s.practice，练习模式以页面模式为准 */
                 var isPractice = result.practice || !online;
@@ -329,7 +330,8 @@
                         : v.desc);
                 el.againLabel.textContent = online ? '返回等待' : '再来一局';
                 el.resultNote.textContent = online
-                    ? '成绩已由服务端锁定，请查看大屏榜单；等待主持人下一轮'
+                    ? (result.pending ? '等待主持人结算后显示最终名次'
+                                      : '成绩已由服务端锁定，请查看大屏榜单；等待主持人下一轮')
                     : '练习成绩只保存在本机';
                 var rankLabel = isPractice ? '不计' :
                     (result.rank ? '第 ' + result.rank + ' 名' : (online ? '等待主持人结算' : '待确认'));
@@ -415,6 +417,7 @@
                 onShake: shake,
                 onFever: function (on) { show(el.fever, on); },
                 onResult: showResult,
+                onResultUpdate: showResult,
                 onBoard: refreshBoard,
                 onMode: function (mode) {
                     online = (mode === 'online');

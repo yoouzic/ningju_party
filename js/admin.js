@@ -575,7 +575,7 @@
         recalcPrizeTotal();
     }
 
-    /* 预计最多可发 = Σ min(总库存, 每人上限)，只统计勾选启用的奖品 */
+    /* 预计最多可发 = Σ min(总库存, 每种上限)，只统计勾选启用的奖品 */
     function recalcPrizeTotal() {
         if (!prizesBuilt) {
             text(el.prizeTotal, '预计最多可发 0 人');
@@ -679,7 +679,7 @@
         var ops = doc.createElement('td');
         var box = doc.createElement('div');
         box.className = 'admin-actions';
-        box.appendChild(claimBtn('核销刮刮乐', 'card', r, !!r.claimed_at));
+        box.appendChild(claimBtn('核销刮刮乐', 'card', r, !r.card_no || !!r.claimed_at));
         box.appendChild(claimBtn('核销礼物', 'gift', r, !r.gift || !!r.gift_claimed_at));
         ops.appendChild(box);
         tr.appendChild(ops);

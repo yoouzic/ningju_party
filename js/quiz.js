@@ -59,6 +59,7 @@
         var pollTimer = 0;
         var submittingRoundId = 0;    /* 正在提交的轮次，0 表示空闲 */
         var pollSeq = 0;              /* 状态轮询序号：旧响应不得覆盖新响应 */
+        var pollBusy = false;         /* 慢网下不叠加轮询请求 */
         var lastLoginAt = 0;          /* 最近一次登录成功的时间戳 */
         var lastBoardSig = '';        /* 答题榜内容签名，避免 aria-live 重复播报 */
 
@@ -480,11 +481,13 @@
         }
 
         function poll() {
-            if (!online) return;
+            if (!online || pollBusy) return;
+            pollBusy = true;
             /* 发出请求时记录序号与凭证：迟到的旧响应不得覆盖新状态或注销新登录 */
             var seq = ++pollSeq;
             var token = PG.Net.getToken();
             PG.Net.status().then(function (st) {
+                pollBusy = false;
                 if (!st) return;
                 if (seq !== pollSeq) return;
                 if (PG.Net.getToken() !== token) return;

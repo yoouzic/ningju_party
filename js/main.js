@@ -78,8 +78,12 @@
 
             var lastRoundId = 0;
             var lastStatus = '';
+            var pollBusy = false;
             function poll() {
+                if (pollBusy) return;
+                pollBusy = true;
                 PG.Net.status().then(function (st) {
+                    pollBusy = false;
                     if (!st) return;
                     var r = st.round;
                     var s = game.s;
@@ -92,6 +96,7 @@
                         var myRank = st.me.result && st.me.result.rank;
                         if (myRank) {
                             s.rank = myRank;
+                            if (s.phase === PG.PHASE.OVER) game.applyServerRank(myRank);
                         } else if (st.board && st.board.entries) {
                             for (var i = 0; i < st.board.entries.length; i++) {
                                 if (st.board.entries[i].player_id === st.me.id) {

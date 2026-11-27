@@ -56,12 +56,16 @@
             serverTimeLeft: C.TIME_LIMIT,
             online: false,
             practice: false,
+            roundId: 0,
             player: E.createPlayer(),
             items: [],
             particles: [],
             floatTexts: [],
             rivals: E.createRivals()
         };
+        this.lastResult = null;
+        this.lastRecord = null;
+        this.lastRank = 0;
         return this.s;
     };
 
@@ -90,9 +94,11 @@
     /* 主持人开赛：服务端计时已经开始，客户端不再本地倒计时，直接进入游戏 */
     Game.prototype.beginRound = function (round) {
         var ph = this.s.phase;
-        if (ph === PHASE.PLAYING) return;              /* 同一轮次的重复轮询不重启 */
-        /* 上一轮已结算 / 暂停 / 本地倒计时残留，都要先清干净再进入新轮次 */
-        if (ph !== PHASE.READY) this.reset();
+        var rid = round && round.id;
+        if (ph === PHASE.PLAYING && this.s.roundId === rid) return;  /* 同一轮次的重复轮询不重启 */
+        /* 新轮次即使当前仍在 playing，也必须重置进度/名次 */
+        if (ph !== PHASE.READY || (rid && this.s.roundId !== rid)) this.reset();
+        this.s.roundId = rid || 0;
         this.s.online = true;
         this.s.practice = false;
         this.s.serverTimeLeft = (round && round.seconds_left) || C.TIME_LIMIT;
@@ -278,10 +284,24 @@
         result.practice = !!s.practice;
         s.rank = result.rank;
         var record = ST.commit(result);
+        this.lastResult = result;
+        this.lastRecord = record;
+        this.lastRank = result.rank || 0;
         A.play(result.win ? 'finish' : 'fail');
         if (result.win) this.celebrate();
         this.setPhase(PHASE.OVER);
         this.emit('onResult', result, record);
+    };
+
+    /* 主持人结算后补发名次：超时未完赛的玩家也需要看到最终名次 */
+    Game.prototype.applyServerRank = function (rank) {
+        if (!rank || !this.lastResult || this.lastRank === rank) return;
+        this.lastRank = rank;
+        this.lastResult.rank = rank;
+        this.lastResult.win = rank <= C.TOP_N;
+        this.lastResult.pending = false;
+        this.s.rank = rank;
+        this.emit('onResultUpdate', this.lastResult, this.lastRecord);
     };
 
     /* ------------------------------------------------------------ 每步更新 */

@@ -77,12 +77,23 @@
                 state.mode = 'practice';
                 return Promise.resolve('practice');
             }
+            function recover() {
+                global.setTimeout(function () {
+                    if (state.mode !== 'practice') return;
+                    request('status').then(function (s) {
+                        state.mode = 'online';
+                        state.status = s;
+                        global.location.reload();
+                    }).catch(function () { recover(); });
+                }, 5000);
+            }
             return request('status').then(function (s) {
                 state.mode = 'online';
                 state.status = s;
                 return 'online';
             }).catch(function () {
                 state.mode = 'practice';
+                recover();      /* 大屏/手机先于服务端打开时，服务端就绪后自动重载 */
                 return 'practice';
             });
         },

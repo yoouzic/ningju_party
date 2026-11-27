@@ -21,6 +21,7 @@ import hmac
 import io
 import json
 import os
+import posixpath
 import random
 import secrets
 import socket
@@ -30,19 +31,22 @@ import time
 import uuid
 from contextlib import contextmanager
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(ROOT, "pixel_rush.db")
+DB_PATH = os.environ.get("PIXEL_RUSH_DB") or os.path.join(ROOT, "pixel_rush.db")
 BASE_PATH = os.environ.get("PIXEL_RUSH_BASE", "").strip().rstrip("/")
 if ":" in BASE_PATH or "\\" in BASE_PATH or " " in BASE_PATH:
     BASE_PATH = ""
 API_PREFIX = "/api/" if BASE_PATH else "/pixel-rush/api/"
 DB_LOCK = threading.RLock()
+ROUND_LOCK = threading.RLock()
+DRAW_LOCK = threading.RLock()
 _THREAD = threading.local()
 _SETTINGS_CACHE = {}
 _SECRET_CACHE = None
 _BOARD_CACHE = {"key": None, "at": 0.0, "data": None}
+STATIC_EXTS = (".html", ".css", ".js", ".svg", ".png", ".ico", ".jpg", ".jpeg", ".webp")
 
 TOP_N_DEFAULT = 10
 DURATION_DEFAULT = 45
@@ -139,6 +143,9 @@ def secret_bytes():
 
 def init_db():
     global _SECRET_CACHE
+    db_dir = os.path.dirname(os.path.abspath(DB_PATH))
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     _SETTINGS_CACHE.clear()
     _SECRET_CACHE = None
     with tx() as c:
@@ -199,12 +206,14 @@ def init_db():
             set_setting(k, v)
     secret_bytes()
     pwd = os.environ.get("PIXEL_RUSH_ADMIN_PASSWORD")
+    generated = None
     if get_setting("admin_pwd_hash") is None:
         if not pwd:
             pwd = secrets.token_urlsafe(10)
+            generated = pwd
             print("  [重要] 未设置 PIXEL_RUSH_ADMIN_PASSWORD，已生成随机管理口令：" + pwd)
         set_setting("admin_pwd_hash", hashlib.sha256((secret_bytes().hex() + pwd).encode()).hexdigest())
-    return pwd
+    return generated
 
 
 def log(action, detail=""):
@@ -280,11 +289,15 @@ def round_view(r):
     }
 
 
-def assign_card(player_id, source, round_id=None):
+def assign_card(player_id, source, round_id=None, reserve=0):
     with tx() as c:
         row = c.execute("SELECT no FROM cards WHERE owner_id IS NULL ORDER BY no LIMIT 1").fetchone()
         if not row:
             return None
+        if source == "base" and reserve > 0:
+            free = c.execute("SELECT COUNT(*) AS n FROM cards WHERE owner_id IS NULL").fetchone()["n"]
+            if free <= reserve:
+                return None
         no = row["no"]
         c.execute("UPDATE cards SET owner_id=?,source=?,round_id=?,assigned_at=? WHERE no=?",
                   (player_id, source, round_id, time.time(), no))
@@ -293,15 +306,15 @@ def assign_card(player_id, source, round_id=None):
     return no
 
 
-def rank_rows(kind, round_id):
-    round_row = fetch("SELECT started_at FROM rounds WHERE id=?", (round_id,), one=True)
+def rank_rows_conn(conn, kind, round_id):
+    round_row = conn.execute("SELECT started_at FROM rounds WHERE id=?", (round_id,)).fetchone()
     started_at = float(round_row["started_at"] or 0) if round_row else 0.0
     if kind == "shake":
-        rows = fetch("SELECT s.player_id, p.name, s.rank, s.finished_at, s.count "
-                     "FROM steps s JOIN players p ON p.id=s.player_id "
-                     "WHERE s.round_id=? AND s.count > 0 "
-                     "ORDER BY (s.finished_at IS NULL) ASC, s.finished_at ASC, "
-                     "s.count DESC, s.last_at ASC", (round_id,))
+        rows = conn.execute("SELECT s.player_id, p.name, s.rank, s.finished_at, s.count "
+                            "FROM steps s JOIN players p ON p.id=s.player_id "
+                            "WHERE s.round_id=? AND s.count > 0 "
+                            "ORDER BY (s.finished_at IS NULL) ASC, s.finished_at ASC, "
+                            "s.count DESC, s.last_at ASC", (round_id,)).fetchall()
         out = []
         for i, r in enumerate(rows):
             elapsed = round((r["finished_at"] - started_at) * 1000) if r["finished_at"] and started_at else None
@@ -309,61 +322,76 @@ def rank_rows(kind, round_id):
                         "score": r["count"], "elapsed": elapsed,
                         "finished": bool(r["finished_at"])})
         return out
-    rows = fetch("SELECT a.player_id, p.name, a.correct_count, a.total_count, a.elapsed_ms, a.rank "
-                 "FROM quiz_attempts a JOIN players p ON p.id=a.player_id WHERE a.round_id=? "
-                 "ORDER BY a.correct_count DESC, a.elapsed_ms ASC, a.submitted_at ASC", (round_id,))
+    rows = conn.execute("SELECT a.player_id, p.name, a.correct_count, a.total_count, a.elapsed_ms, a.rank "
+                        "FROM quiz_attempts a JOIN players p ON p.id=a.player_id WHERE a.round_id=? "
+                        "ORDER BY a.correct_count DESC, a.elapsed_ms ASC, a.submitted_at ASC",
+                        (round_id,)).fetchall()
     return [{"name": r["name"], "player_id": r["player_id"], "rank": r["rank"] or i + 1,
              "score": int(r["correct_count"] or 0), "elapsed": int(r["elapsed_ms"] or 0),
              "total": int(r["total_count"] or 0), "finished": True} for i, r in enumerate(rows)]
 
 
+def rank_rows(kind, round_id):
+    return rank_rows_conn(db(), kind, round_id)
+
+
 def close_round(round_id):
-    r = fetch("SELECT * FROM rounds WHERE id=?", (round_id,), one=True)
-    if not r or r["status"] != "running":
-        return {"error": "轮次不在进行中"}, 409
-    kind = r["kind"]
-    with tx() as c:
-        c.execute("UPDATE rounds SET status='closed', ends_at=? WHERE id=?", (time.time(), round_id))
-    ranked = rank_rows(kind, round_id)
-    top_n = public_int("top_n", TOP_N_DEFAULT)
-    awarded = 0
-    with tx() as c:
-        for i, item in enumerate(ranked, 1):
-            table = "steps" if kind == "shake" else "quiz_attempts"
-            c.execute("UPDATE %s SET rank=? WHERE round_id=? AND player_id=?" % table,
-                      (i, round_id, item["player_id"]))
-            if i <= top_n:
-                card = c.execute("SELECT no FROM cards WHERE owner_id IS NULL ORDER BY no LIMIT 1").fetchone()
-                card_no = card["no"] if card else None
-                if card_no:
-                    c.execute("UPDATE cards SET owner_id=?,source='reward',round_id=?,assigned_at=? WHERE no=?",
-                              (item["player_id"], round_id, time.time(), card_no))
-                c.execute("INSERT OR REPLACE INTO rewards(round_id,player_id,rank,card_no,gift) "
-                          "VALUES(?,?,?,?,1)", (round_id, item["player_id"], i, card_no))
-                awarded += 1
-    log("close_round", json.dumps({"round_id": round_id, "kind": kind, "awarded": awarded}, ensure_ascii=False))
-    return {"round_id": round_id, "ranked": len(ranked), "awarded": awarded,
-            "top": ranked[:top_n]}, 200
+    with ROUND_LOCK:
+        with tx() as c:
+            # 状态翻转必须在同一个写事务里完成；并发 close/自动到期只有一个能成功
+            cur = c.execute("UPDATE rounds SET status='closed', ends_at=? "
+                            "WHERE id=? AND status='running'", (time.time(), round_id))
+            if cur.rowcount != 1:
+                return {"error": "轮次不在进行中"}, 409
+            r = c.execute("SELECT * FROM rounds WHERE id=?", (round_id,)).fetchone()
+            kind = r["kind"]
+            ranked = rank_rows_conn(c, kind, round_id)
+            top_n = public_int("top_n", TOP_N_DEFAULT)
+            gift_total = max(0, public_int("gift_total", GIFT_TOTAL))
+            gifts_used = c.execute("SELECT COUNT(*) n FROM rewards WHERE gift=1").fetchone()["n"]
+            awarded = 0
+            for i, item in enumerate(ranked, 1):
+                table = "steps" if kind == "shake" else "quiz_attempts"
+                c.execute("UPDATE %s SET rank=? WHERE round_id=? AND player_id=?" % table,
+                          (i, round_id, item["player_id"]))
+                if i <= top_n:
+                    card = c.execute("SELECT no FROM cards WHERE owner_id IS NULL ORDER BY no LIMIT 1").fetchone()
+                    card_no = card["no"] if card else None
+                    if card_no:
+                        c.execute("UPDATE cards SET owner_id=?,source='reward',round_id=?,assigned_at=? WHERE no=?",
+                                  (item["player_id"], round_id, time.time(), card_no))
+                    gift = 1 if gifts_used < gift_total else 0
+                    if gift:
+                        gifts_used += 1
+                    c.execute("INSERT OR REPLACE INTO rewards(round_id,player_id,rank,card_no,gift) "
+                              "VALUES(?,?,?,?,?)", (round_id, item["player_id"], i, card_no, gift))
+                    item["card_no"] = card_no
+                    item["gift"] = gift
+                    awarded += 1
+        log("close_round", json.dumps({"round_id": round_id, "kind": kind, "awarded": awarded}, ensure_ascii=False))
+        return {"round_id": round_id, "ranked": len(ranked), "awarded": awarded,
+                "top": ranked[:top_n]}, 200
 
 
 def open_round(kind, duration=None, title=""):
     if kind not in ("shake", "quiz"):
         return {"error": "未知环节"}, 400
-    for r in fetch("SELECT id FROM rounds WHERE status='running'"):
-        close_round(r["id"])
-    dur = int(duration or public_int("duration", DURATION_DEFAULT))
-    now = time.time()
-    with tx() as c:
-        cur = c.execute("INSERT INTO rounds(kind,status,started_at,ends_at,config,created_at) "
-                        "VALUES(?,?,?,?,?,?)",
-                        (kind, "running", now, now + dur,
-                         json.dumps({"title": title, "duration": dur}, ensure_ascii=False), now))
-        rid = cur.lastrowid
-        if kind == "quiz":
-            for q in c.execute("SELECT * FROM quiz_questions WHERE round_id=0 ORDER BY order_no").fetchall():
-                c.execute("INSERT INTO quiz_questions(round_id,order_no,prompt,qtype,options,answer) "
-                          "VALUES(?,?,?,?,?,?)",
-                          (rid, q["order_no"], q["prompt"], q["qtype"], q["options"], q["answer"]))
+    with ROUND_LOCK:
+        for r in fetch("SELECT id FROM rounds WHERE status='running'"):
+            close_round(r["id"])
+        dur = int(duration or public_int("duration", DURATION_DEFAULT))
+        now = time.time()
+        with tx() as c:
+            cur = c.execute("INSERT INTO rounds(kind,status,started_at,ends_at,config,created_at) "
+                            "VALUES(?,?,?,?,?,?)",
+                            (kind, "running", now, now + dur,
+                             json.dumps({"title": title, "duration": dur}, ensure_ascii=False), now))
+            rid = cur.lastrowid
+            if kind == "quiz":
+                for q in c.execute("SELECT * FROM quiz_questions WHERE round_id=0 ORDER BY order_no").fetchall():
+                    c.execute("INSERT INTO quiz_questions(round_id,order_no,prompt,qtype,options,answer) "
+                              "VALUES(?,?,?,?,?,?)",
+                              (rid, q["order_no"], q["prompt"], q["qtype"], q["options"], q["answer"]))
     log("open_round", json.dumps({"round_id": rid, "kind": kind, "duration": dur}, ensure_ascii=False))
     return {"round_id": rid, "kind": kind, "status": "running", "duration": dur}, 200
 
@@ -517,9 +545,6 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(data)
 
     def end_headers(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         super().end_headers()
 
     def do_OPTIONS(self):
@@ -530,24 +555,38 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             n = int(self.headers.get("Content-Length") or 0)
             raw = self.rfile.read(n) if n else b"{}"
-            return json.loads(raw.decode("utf-8") or "{}")
+            data = json.loads(raw.decode("utf-8") or "{}")
+            return data if isinstance(data, dict) else {}
         except (ValueError, UnicodeDecodeError):
             return {}
+
+    def list_directory(self, path):
+        self.send_error(404, "Not found")
+        return None
 
     def _api_error(self, msg, status=400):
         return self._json({"error": msg}, status)
 
     def do_GET(self):
         parsed = urlparse(self.path)
-        path = strip_base(parsed.path)
+        raw_path = unquote(parsed.path or "/")
+        if "\x00" in raw_path or "\\" in raw_path:
+            return self._api_error("not found", 404)
+        norm = posixpath.normpath(raw_path)
+        if not norm.startswith("/"):
+            norm = "/" + norm
+        parts = [p for p in norm.split("/") if p]
+        if any(p.startswith(".") for p in parts):
+            return self._api_error("not found", 404)
+        path = strip_base(norm)
         qs = parse_qs(parsed.query)
         if not path.startswith(API_PREFIX):
             if path == "/":
                 path = "/index.html"
-            if any(path.lower().endswith(ext) for ext in
-                   (".db", ".py", ".pyc", ".service", ".conf", ".env", ".log", ".sqlite", ".sqlite3")):
-                return self._api_error("forbidden", 403)
-            self.path = path + (("?" + parsed.query) if parsed.query else "")
+            # 静态文件只走白名单；目录、md/db/py、点文件一律 404
+            if not path.lower().endswith(STATIC_EXTS):
+                return self._api_error("not found", 404)
+            self.path = quote(path, safe="/") + (("?" + parsed.query) if parsed.query else "")
             return super().do_GET()
         route = path[len(API_PREFIX):]
         if route == "status":
@@ -567,7 +606,8 @@ class Handler(SimpleHTTPRequestHandler):
             if not info:
                 return self._api_error("未登录", 401)
             r = current_round()
-            if not r or r["kind"] != "quiz":
+            now = time.time()
+            if not r or r["kind"] != "quiz" or r["status"] != "running" or now > (r["ends_at"] or 0) + 1:
                 return self._api_error("当前不是答题环节", 409)
             rows = fetch("SELECT id,order_no,prompt,qtype,options FROM quiz_questions "
                          "WHERE round_id=? ORDER BY order_no", (r["id"],))
@@ -611,7 +651,7 @@ class Handler(SimpleHTTPRequestHandler):
                 row = c.execute("SELECT * FROM players WHERE id=?", (pid,)).fetchone()
                 need_card = not row["card_no"]
             if need_card:
-                assign_card(pid, "base")
+                assign_card(pid, "base", reserve=2 * public_int("top_n", TOP_N_DEFAULT))
             p = fetch("SELECT * FROM players WHERE id=?", (pid,), one=True)
             return self._json({"token": make_token({"p": pid, "k": "player", "t": time.time()}),
                                "player": {"id": p["id"], "name": p["name"], "code": p["code"],
@@ -625,42 +665,64 @@ class Handler(SimpleHTTPRequestHandler):
             r = current_round()
             if not r or r["status"] != "running" or r["kind"] != "shake":
                 return self._api_error("本环节未开始", 409)
-            now = time.time()
-            if now > (r["ends_at"] or 0) + 1:
+            if time.time() > (r["ends_at"] or 0) + 1:
                 close_round(r["id"])
                 return self._api_error("本环节已结束", 409)
-            delta = max(0, min(int(payload.get("steps") or 0), 12))
+            requested = max(0, min(int(payload.get("steps") or 0), 12))
             pid = info["p"]
+            result = None
+            expired = False
             with tx() as c:
-                row = c.execute("SELECT * FROM steps WHERE round_id=? AND player_id=?",
-                                (r["id"], pid)).fetchone()
-                count = int(row["count"]) if row else 0
-                last_at = float(row["last_at"]) if row and row["last_at"] else r["started_at"]
-                if row and row["finished_at"]:
-                    return self._json({"progress": 100, "finished": True,
-                                       "rank": row["rank"], "count": count})
-                rate = float(get_setting("max_rate", MAX_RATE))
-                allowed = max(0, int((now - last_at) * rate + 1))
-                delta = min(delta, allowed, int(rate) + 2)
-                count += delta
-                c.execute("INSERT INTO steps(round_id,player_id,count,last_at) VALUES(?,?,?,?) "
-                          "ON CONFLICT(round_id,player_id) DO UPDATE SET count=excluded.count,last_at=excluded.last_at",
-                          (r["id"], pid, count, now))
-            target = public_int("target_steps", TARGET_STEPS_DEFAULT)
-            progress = min(100.0, count / target * 100.0)
-            if count >= target:
-                with tx() as c:
-                    row = c.execute("SELECT finished_at,rank FROM steps WHERE round_id=? AND player_id=?",
-                                    (r["id"], pid)).fetchone()
-                    if not row["finished_at"]:
-                        rank = c.execute("SELECT COUNT(*) n FROM steps WHERE round_id=? AND finished_at IS NOT NULL",
-                                         (r["id"],)).fetchone()["n"] + 1
-                        c.execute("UPDATE steps SET finished_at=?,rank=? WHERE round_id=? AND player_id=?",
-                                  (now, rank, r["id"], pid))
+                # 同一个写事务里重新确认轮次仍在进行；和 close 串行，避免结算后落步
+                rr = c.execute("SELECT status, kind, ends_at, started_at FROM rounds WHERE id=?",
+                               (r["id"],)).fetchone()
+                if not rr or rr["status"] != "running" or rr["kind"] != "shake":
+                    result = ("本环节已结束", 409)
+                else:
+                    now = time.time()
+                    if now > (rr["ends_at"] or 0) + 1:
+                        expired = True
                     else:
-                        rank = row["rank"]
-                return self._json({"progress": 100, "finished": True, "rank": rank, "count": count})
-            return self._json({"progress": progress, "finished": False, "rank": None, "count": count})
+                        st = c.execute("SELECT * FROM steps WHERE round_id=? AND player_id=?",
+                                       (r["id"], pid)).fetchone()
+                        count = int(st["count"]) if st else 0
+                        if st and st["finished_at"]:
+                            result = {"progress": 100, "finished": True,
+                                      "rank": st["rank"], "count": count}
+                        else:
+                            last_at = float(st["last_at"]) if st and st["last_at"] else float(rr["started_at"] or now)
+                            rate = float(get_setting("max_rate", MAX_RATE))
+                            if rate <= 0:
+                                rate = MAX_RATE
+                            target = max(1, public_int("target_steps", TARGET_STEPS_DEFAULT))
+                            allowed = max(0, int(max(0.0, now - last_at) * rate))
+                            delta = min(requested, allowed, 12)
+                            if delta <= 0:
+                                result = {"progress": min(100.0, count * 100.0 / target),
+                                          "finished": False, "rank": None, "count": count, "throttled": True}
+                            else:
+                                count += delta
+                                c.execute("INSERT INTO steps(round_id,player_id,count,last_at) VALUES(?,?,?,?) "
+                                          "ON CONFLICT(round_id,player_id) DO UPDATE SET count=excluded.count,last_at=excluded.last_at",
+                                          (r["id"], pid, count, now))
+                                if count >= target:
+                                    rank = c.execute("SELECT COUNT(*) AS n FROM steps "
+                                                     "WHERE round_id=? AND finished_at IS NOT NULL",
+                                                     (r["id"],)).fetchone()["n"] + 1
+                                    c.execute("UPDATE steps SET finished_at=?,rank=? "
+                                              "WHERE round_id=? AND player_id=?",
+                                              (now, rank, r["id"], pid))
+                                    result = {"progress": 100, "finished": True,
+                                              "rank": rank, "count": count}
+                                else:
+                                    result = {"progress": min(100.0, count * 100.0 / target),
+                                              "finished": False, "rank": None, "count": count}
+            if expired:
+                close_round(r["id"])
+                return self._api_error("本环节已结束", 409)
+            if isinstance(result, tuple):
+                return self._api_error(result[0], result[1])
+            return self._json(result)
 
         if route == "quiz/submit":
             info = auth_of(self, payload, "player")
@@ -669,8 +731,13 @@ class Handler(SimpleHTTPRequestHandler):
             r = current_round()
             if not r or r["status"] != "running" or r["kind"] != "quiz":
                 return self._api_error("答题环节未开始", 409)
-            now = time.time()
+            if time.time() > (r["ends_at"] or 0) + 1:
+                close_round(r["id"])
+                return self._api_error("答题环节已结束", 409)
             answers = payload.get("answers") or {}
+            if not isinstance(answers, dict):
+                answers = {}
+            now = time.time()
             qs = fetch("SELECT id,answer,qtype FROM quiz_questions WHERE round_id=?", (r["id"],))
             correct, total = 0, len(qs)
             for q in qs:
@@ -686,17 +753,51 @@ class Handler(SimpleHTTPRequestHandler):
                     correct += 1
             elapsed_ms = max(0, int((now - r["started_at"]) * 1000))
             pid = info["p"]
+            inserted = False
+            expired = False
+            result = None
             with tx() as c:
-                c.execute("INSERT INTO quiz_attempts(round_id,player_id,answers,correct_count,total_count,"
-                          "elapsed_ms,submitted_at) VALUES(?,?,?,?,?,?,?) "
-                          "ON CONFLICT(round_id,player_id) DO UPDATE SET answers=excluded.answers,"
-                          "correct_count=excluded.correct_count,total_count=excluded.total_count,"
-                          "elapsed_ms=excluded.elapsed_ms,submitted_at=excluded.submitted_at",
-                          (r["id"], pid, json.dumps(answers, ensure_ascii=False), correct, total,
-                           elapsed_ms, now))
-            log("quiz_submit", json.dumps({"round": r["id"], "player": pid, "correct": correct}, ensure_ascii=False))
-            return self._json({"correct": correct, "total": total, "elapsed_ms": elapsed_ms,
-                               "round": round_view(r)})
+                # 与 close 串行重查；答题只接受第一次提交，重复相同 payload 视为幂等重试
+                rr = c.execute("SELECT status, kind, ends_at, started_at FROM rounds WHERE id=?",
+                               (r["id"],)).fetchone()
+                if not rr or rr["status"] != "running" or rr["kind"] != "quiz":
+                    result = ("答题环节已结束", 409)
+                elif time.time() > (rr["ends_at"] or 0) + 1:
+                    expired = True
+                else:
+                    existing = c.execute("SELECT answers,correct_count,total_count,elapsed_ms "
+                                         "FROM quiz_attempts WHERE round_id=? AND player_id=?",
+                                         (r["id"], pid)).fetchone()
+                    if existing:
+                        try:
+                            old_answers = json.loads(existing["answers"] or "{}")
+                        except Exception:
+                            old_answers = {}
+                        if old_answers == answers:
+                            result = {"correct": int(existing["correct_count"] or 0),
+                                      "total": int(existing["total_count"] or 0),
+                                      "elapsed_ms": int(existing["elapsed_ms"] or 0)}
+                        else:
+                            result = ("本环节已提交，不能修改", 409)
+                    else:
+                        c.execute("INSERT INTO quiz_attempts(round_id,player_id,answers,correct_count,"
+                                  "total_count,elapsed_ms,submitted_at) VALUES(?,?,?,?,?,?,?)",
+                                  (r["id"], pid, json.dumps(answers, ensure_ascii=False),
+                                   correct, total, elapsed_ms, now))
+                        inserted = True
+                        result = {"correct": correct, "total": total, "elapsed_ms": elapsed_ms}
+            if expired:
+                close_round(r["id"])
+                return self._api_error("答题环节已结束", 409)
+            if isinstance(result, tuple):
+                return self._api_error(result[0], result[1])
+            if inserted:
+                log("quiz_submit", json.dumps({"round": r["id"], "player": pid,
+                                               "correct": result["correct"]}, ensure_ascii=False))
+            final_round = fetch("SELECT * FROM rounds WHERE id=?", (r["id"],), one=True)
+            return self._json({"correct": result["correct"], "total": result["total"],
+                               "elapsed_ms": result["elapsed_ms"],
+                               "round": round_view(final_round or r)})
 
         if route == "admin/login":
             pwd = str(payload.get("password") or "")
@@ -721,25 +822,39 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(result, st)
         if route == "admin/round/void":
             rid = int(payload.get("round_id") or 0)
-            with tx() as c:
-                c.execute("DELETE FROM steps WHERE round_id=?", (rid,))
-                c.execute("DELETE FROM quiz_attempts WHERE round_id=?", (rid,))
-                c.execute("DELETE FROM rewards WHERE round_id=?", (rid,))
-                returned = c.execute(
-                    "UPDATE cards SET owner_id=NULL, source=NULL, round_id=NULL, "
-                    "assigned_at=NULL, claimed_at=NULL, gift_claimed_at=NULL "
-                    "WHERE round_id=? AND source='reward' AND no NOT IN "
-                    "(SELECT card_no FROM draws WHERE card_no IS NOT NULL)", (rid,)).rowcount
-                c.execute("UPDATE rounds SET status='void' WHERE id=?", (rid,))
-            log("void_round", json.dumps({"round_id": rid, "cards_returned": returned}, ensure_ascii=False))
+            with ROUND_LOCK:
+                exists = fetch("SELECT id FROM rounds WHERE id=?", (rid,), one=True)
+                if not exists:
+                    return self._api_error("轮次不存在", 404)
+                with tx() as c:
+                    c.execute("DELETE FROM steps WHERE round_id=?", (rid,))
+                    c.execute("DELETE FROM quiz_attempts WHERE round_id=?", (rid,))
+                    c.execute("DELETE FROM rewards WHERE round_id=?", (rid,))
+                    # 已核销/已进入抽奖的卡不能回池，否则会发出重复编号
+                    returned = c.execute(
+                        "UPDATE cards SET owner_id=NULL, source=NULL, round_id=NULL, "
+                        "assigned_at=NULL, claimed_at=NULL, gift_claimed_at=NULL "
+                        "WHERE round_id=? AND source='reward' AND claimed_at IS NULL "
+                        "AND gift_claimed_at IS NULL AND no NOT IN "
+                        "(SELECT card_no FROM draws WHERE card_no IS NOT NULL)", (rid,)).rowcount
+                    c.execute("UPDATE rounds SET status='void' WHERE id=?", (rid,))
+                log("void_round", json.dumps({"round_id": rid, "cards_returned": returned}, ensure_ascii=False))
             return self._json({"ok": True, "round_id": rid, "cards_returned": returned})
         if route == "admin/settings":
-            allowed = {"top_n", "duration", "target_steps", "gift_total", "max_rate"}
+            allowed = {"top_n": (1, 50), "duration": (5, 3600), "target_steps": (10, 5000),
+                       "gift_total": (0, 500), "max_rate": (1, 60)}
             changed = {}
             for k, v in (payload.get("settings") or {}).items():
-                if k in allowed:
-                    set_setting(k, int(v))
-                    changed[k] = int(v)
+                if k not in allowed:
+                    continue
+                try:
+                    n = int(float(v))
+                except (TypeError, ValueError):
+                    return self._api_error("参数格式错误：" + k, 400)
+                lo, hi = allowed[k]
+                n = max(lo, min(hi, n))
+                set_setting(k, n)
+                changed[k] = n
             log("settings", json.dumps(changed, ensure_ascii=False))
             return self._json({"ok": True, "changed": changed})
         if route == "admin/prizes":
@@ -754,6 +869,12 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": True})
         if route == "admin/questions":
             items = payload.get("questions") or []
+            if not isinstance(items, list):
+                return self._api_error("题库必须是数组", 400)
+            for q in items:
+                opts = q.get("options") or []
+                if not isinstance(opts, list) or any("|" in str(o) for o in opts):
+                    return self._api_error("选项不能包含 | 分隔符", 400)
             with tx() as c:
                 c.execute("DELETE FROM quiz_questions WHERE round_id=0")
                 for i, q in enumerate(items, 1):
