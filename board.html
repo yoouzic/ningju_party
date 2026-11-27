@@ -5,12 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#2e222f">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%232e222f'/%3E%3Crect x='6' y='2' width='4' height='12' fill='%23f9c22b'/%3E%3Crect x='2' y='6' width='12' height='4' fill='%23f9c22b'/%3E%3Crect x='4' y='4' width='8' height='8' fill='%23f04f78'/%3E%3C/svg%3E">
-<title>实时竞速榜 · 前 10 名 | 21届凝聚力晚会</title>
-<!-- 大屏页面：投影 / 电视全屏打开，每 2 秒刷新全场成绩。由 server.py 托管时为真实榜单。 -->
+<title>晚会大屏 · 实时榜单 | 21届凝聚力晚会</title>
+<!--
+  大屏页面：投影 / 电视全屏打开，每 2 秒拉取一次 PG.Net.status()。
+  线上由 server.py 托管：显示当前环节、倒计时、前 10 名、扫码入口、全场数据与最近抽奖；
+  练习模式（file:// 或服务端不可达）不伪造成绩，只显示空榜与明确提示。
+-->
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/font.css">
 <link rel="stylesheet" href="css/base.css">
 <link rel="stylesheet" href="css/pixel-ui.css">
+<link rel="stylesheet" href="css/party.css">
 <link rel="stylesheet" href="css/board.css">
 </head>
 <body>
@@ -24,47 +29,102 @@
         <div class="logo"><i class="px-icon" data-icon="trophy" data-scale="4"></i></div>
         <div class="topbar__text">
             <p class="kicker">
-                <span>21届凝聚力晚会</span><span>环节 01 · 摇一摇拼手速</span>
+                <span>21届凝聚力晚会</span>
                 <span class="plate plate--quiet" id="board-mode">连接中</span>
             </p>
-            <h1>实时竞速榜 <em>前 10 名</em></h1>
-            <p class="lede">前 10 名信息员请到舞台左侧有序领取刮刮乐 ×1 + 小礼物</p>
+            <h1 id="board-stage">等待主持人开赛</h1>
+            <p class="lede">① 摇一摇拼手速 · ② 线上答题竞速 · ③ 幸运大抽奖</p>
         </div>
-        <div class="player-chip"><span>已上榜</span><b id="board-total">0 人</b></div>
+        <div class="player-chip"><span>参与信息员</span><b id="board-total">—</b></div>
     </div>
 </header>
 
 <main class="board">
-    <section class="join" aria-label="加入方式">
-        <div class="pane">
-            <h2 class="sec"><span class="sq sq--yellow" aria-hidden="true"></span>手机扫码或打开地址加入</h2>
-            <p class="join-url" id="join-url">正在获取加入地址…</p>
-            <p class="sub">手机与电脑连同一 Wi-Fi；主持人可把此地址生成二维码投屏。更新于 <b id="board-time">--:--:--</b></p>
+    <section class="board-now" aria-label="当前环节状态">
+        <div class="board-now__cell">
+            <span class="board-now__label">环节状态</span>
+            <span class="pill pill--wait" id="board-status">待机</span>
         </div>
-        <div class="join__steps">
-            <div class="step"><b>1</b>扫码登录</div>
-            <div class="step"><b>2</b>摇一摇冲刺</div>
-            <div class="step"><b>3</b>上榜领奖</div>
+        <div class="board-now__cell">
+            <span class="board-now__label">剩余时间（秒）</span>
+            <b class="num-big num-big--idle" id="board-countdown">--</b>
+        </div>
+        <div class="board-now__cell board-now__cell--note">
+            <span class="board-now__label">数据状态</span>
+            <p class="board-now__note" id="board-note">正在连接晚会服务端…</p>
+            <p class="board-now__time">更新于 <b id="board-time">--:--:--</b></p>
         </div>
     </section>
 
-    <ol class="bigboard" id="big-board" aria-live="polite"></ol>
+    <section class="party-card board-main" aria-label="实时榜单">
+        <h2 class="sec">
+            <span class="sq sq--yellow" aria-hidden="true"></span>
+            <span id="board-title">实时竞速榜 · 前 10 名</span>
+            <span class="board-entries" id="board-entries">—</span>
+        </h2>
+        <ol class="board-list" id="board-list" aria-live="polite">
+            <li class="board-list__empty">正在连接晚会服务端…</li>
+        </ol>
+    </section>
 
-    <section class="pane prize">
-        <i class="px-icon" data-icon="gift" data-scale="3"></i>
-        <div>
-            <h2 class="sec"><span class="sq sq--pink" aria-hidden="true"></span>奖励规则</h2>
-            <p>本环节取竞速积分前 10 名，各发放刮刮乐 1 张 + 小礼物；晚会结尾凭刮刮乐编号参与幸运大抽奖。</p>
-        </div>
+    <aside class="board-side" aria-label="扫码、全场数据与奖励规则">
+        <section class="party-card board-qr" aria-label="扫码入口">
+            <h2 class="sec"><span class="sq" aria-hidden="true"></span>扫码加入</h2>
+            <div class="board-qr__row">
+                <div class="board-qr__item">
+                    <div class="qr-frame" id="qr-join-frame">
+                        <img id="qr-join" alt="扫码加入 · 摇一摇">
+                    </div>
+                    <p class="board-qr__label">扫码加入 · 摇一摇</p>
+                    <p class="qr-url" id="join-url">正在获取加入地址…</p>
+                </div>
+                <div class="board-qr__item">
+                    <div class="qr-frame" id="qr-quiz-frame">
+                        <img id="qr-quiz" alt="扫码进入 · 答题竞速">
+                    </div>
+                    <p class="board-qr__label">扫码进入 · 答题竞速</p>
+                    <p class="qr-url" id="quiz-url">正在获取答题地址…</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="party-card board-stats" aria-label="全场数据">
+            <h2 class="sec"><span class="sq sq--blue" aria-hidden="true"></span>全场数据</h2>
+            <div class="party-kv board-kv">
+                <div><span>参与信息员</span><b id="stat-players">—</b></div>
+                <div><span>刮刮乐领取</span><b id="stat-cards">—</b></div>
+                <div><span>已发奖励</span><b id="stat-rewards">—</b></div>
+                <div><span>最近抽奖</span><b id="stat-draws">—</b></div>
+            </div>
+        </section>
+
+        <section class="party-card board-prize" aria-label="奖励规则">
+            <h2 class="sec"><span class="sq sq--yellow" aria-hidden="true"></span>奖励规则</h2>
+            <ul class="board-prize__list">
+                <li><b>环节 01 · 摇一摇</b>竞速前 10 名，各得刮刮乐 1 张 + 小礼物</li>
+                <li><b>环节 02 · 答题</b>正确榜前 10 名，各得刮刮乐 1 张 + 小礼物</li>
+                <li><b>幸运大抽奖</b>凭刮刮乐编号抽号 + 转盘，抽出 6 种奖品</li>
+            </ul>
+        </section>
+    </aside>
+
+    <section class="party-card board-draws" aria-label="最近抽奖">
+        <h2 class="sec">
+            <span class="sq sq--green" aria-hidden="true"></span>
+            <span>最近抽奖</span>
+            <span class="board-draws__note">最多显示最新 6 条 · 完整记录见控制台</span>
+        </h2>
+        <ol class="board-draws__list" id="draw-list">
+            <li class="board-draws__empty">正在连接晚会服务端…</li>
+        </ol>
     </section>
 </main>
 
-<footer class="site-footer">
-    <span>摇一摇 像素冲刺 · 大屏模式</span>
-    <span><a href="index.html">返回玩家页</a></span>
+<footer class="site-footer board-footer">
+    <span>21届凝聚力晚会 · 大屏实时榜单（每 2 秒刷新）</span>
+    <span><a href="index.html">摇一摇</a> · <a href="quiz.html">答题竞速</a> · <a href="admin.html">主持人控制台</a></span>
 </footer>
 
-<script src="js/config.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/sprites.js"></script>
 <script src="js/net.js"></script>

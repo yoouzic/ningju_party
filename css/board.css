@@ -1,107 +1,460 @@
 /* ==========================================================================
-   board.css —— 大屏实时竞速榜（投影 / 电视全屏）
-   复用 tokens / base / pixel-ui 的同一套组件，只放大字号与行高
+   board.css —— 晚会大屏：环节状态 / 倒计时 / 前 10 名 / 扫码 / 全场数据 / 抽奖
+   ----------------------------------------------------------------------------
+   只负责大屏栅格与榜单行，组件复用 party.css（party-card / pill / num-big /
+   qr-frame / qr-url / party-kv / draw-balls）。
+   像素语言：纯色 + 4px 硬边 + 硬投影，无渐变、半透明、模糊、圆角。
+   1920×1080 为主目标；1366×768 走两栏窄版，不出现横向滚动。
    ========================================================================== */
 
-.board {
-    display: grid;
-    gap: 24px;
-    width: min(calc(100% - 32px), var(--max-w));
-    margin: 0 auto;
-    padding: 24px 0 48px;
+/* ---------------------------------------------------------------- 顶栏 / 页脚 */
+.topbar__inner {
+    width: min(calc(100% - 48px), 1680px);
+    padding: 8px 0;
 }
-
-/* ---------------------------------------------------------------- 加入方式 */
-.join {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 320px;
-    gap: 24px;
-    align-items: start;
-}
-.join .pane { min-height: 0; }
-.join-url {
-    color: var(--pink-1);
+.topbar h1 {
+    overflow: hidden;
+    color: var(--yellow-2);
     font-size: var(--fs-3);
     line-height: var(--lh-3);
-    word-break: break-all;
+    text-shadow: 4px 4px 0 var(--pink-1);
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
-.join .sub b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.topbar .player-chip { min-width: 168px; }
+.topbar .player-chip b { font-size: var(--fs-3); line-height: var(--lh-3); }
 
-.join__steps { display: grid; gap: 8px; }
-.step {
-    display: flex;
+.board-footer {
+    width: min(calc(100% - 48px), 1680px);
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+
+/* ---------------------------------------------------------------- 主栅格 */
+.board {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 480px;
+    grid-template-areas:
+        "now   now"
+        "main  side"
+        "draws side";
+    align-items: start;
+    gap: 12px;
+    width: min(calc(100% - 48px), 1680px);
+    margin: 0 auto;
+    padding: 12px 0 12px;
+}
+.board .party-card { padding: 12px 16px; }
+.board-main { grid-area: main; min-width: 0; }
+.board-side {
+    grid-area: side;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    align-items: start;
+    gap: 12px;
+    min-width: 0;
+}
+.board-draws { grid-area: draws; min-width: 0; }
+
+/* ---------------------------------------------------------------- 当前环节条 */
+.board-now {
+    grid-area: now;
+    display: grid;
+    grid-template-columns: minmax(180px, 220px) 200px minmax(0, 1fr);
     align-items: center;
     gap: 12px;
-    min-height: 48px;
     padding: 8px 16px;
-    background: var(--paper);
-    border: 4px solid transparent;
-    border-image: var(--bi-ink) 4;
-    font-size: var(--fs-2);
-    line-height: var(--lh-2);
-}
-.step b {
-    display: grid;
-    place-items: center;
-    flex: none;
-    width: 24px;
-    height: 24px;
-    background: var(--pink-3);
+    background: var(--ink-2);
     border: 4px solid var(--ink);
+    box-shadow: 8px 8px 0 var(--ink-3);
+    color: var(--paper);
+}
+.board-now__cell {
+    display: grid;
+    gap: 4px;
+    align-content: center;
+    min-width: 0;
+}
+.board-now__label {
+    color: var(--silver);
     line-height: var(--lh-1);
 }
-.step:nth-child(2) b { background: var(--blue-4); }
-.step:nth-child(3) b { background: var(--yellow-2); }
+.board-now .pill {
+    justify-self: start;
+    min-width: 112px;
+    padding: 4px 12px;
+    font-size: var(--fs-2);
+    line-height: var(--lh-2);
+    text-align: center;
+}
+/* 大屏状态牌常亮：进行中不再闪烁，避免投影时一半时间看不到状态 */
+.board-now .pill--live { animation: none; }
+.board-now .num-big {
+    display: block;
+    width: 168px;
+    padding: 0 8px;
+    font-size: var(--fs-4);
+    line-height: var(--lh-4);
+    letter-spacing: 2px;
+}
+.board-now .num-big--idle {
+    background: var(--paper-2);
+    color: var(--taupe);
+}
+.board-now__note {
+    overflow: hidden;
+    color: var(--mint);
+    font-size: var(--fs-2);
+    line-height: var(--lh-2);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.board-now__note.is-warn { color: var(--yellow-4); }
+.board-now__time {
+    color: var(--silver);
+    line-height: var(--lh-1);
+}
+.board-now__time b {
+    color: var(--paper);
+    font-variant-numeric: tabular-nums;
+}
 
-/* ---------------------------------------------------------------- 榜单 */
-.bigboard { display: grid; gap: 12px; }
-.bigboard li {
+/* ---------------------------------------------------------------- 前 10 名 */
+.board-main .sec { min-width: 0; }
+#board-title {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.board-entries {
+    flex: none;
+    margin-left: auto;
+    padding: 0 8px;
+    background: var(--paper-2);
+    border: 4px solid var(--ink);
+    color: var(--ink-3);
+    font-size: var(--fs-1);
+    line-height: var(--lh-1);
+    white-space: nowrap;
+}
+
+.board-list { display: grid; gap: 4px; }
+.board-row {
     display: grid;
-    grid-template-columns: 120px minmax(0, 1fr) auto;
+    grid-template-columns: 64px minmax(0, 1fr) 200px 170px;
     align-items: center;
-    gap: 24px;
-    min-height: 72px;
-    padding: 8px 24px 8px 16px;
-    background: var(--paper);
+    gap: 12px;
+    min-height: 44px;
+    padding: 0 12px 0 4px;
+    background: var(--paper-2);
     border: 4px solid transparent;
     border-image: var(--bi-ink) 4;
+    background-clip: padding-box;
     font-size: var(--fs-2);
     line-height: var(--lh-2);
 }
-.bigboard li:nth-child(1) { background: var(--yellow-2); }
-.bigboard li:nth-child(2) { background: var(--blue-5); }
-.bigboard li:nth-child(3) { background: var(--pink-5); }
-.bb__no {
+.board-row--top1 { background: var(--yellow-2); }
+.board-row--top2 { background: var(--blue-5); }
+.board-row--top3 { background: var(--pink-5); }
+
+.bl__no {
+    display: grid;
+    place-items: center;
+    min-height: 32px;
+    background: var(--paper-3);
     color: var(--pink-1);
-    font-size: var(--fs-4);
-    line-height: var(--lh-4);
+    font-size: var(--fs-2);
+    line-height: var(--lh-2);
     font-variant-numeric: tabular-nums;
 }
-.bb__name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.bb__score { color: var(--pink-1); font-variant-numeric: tabular-nums; }
-.bb__score small { margin-left: 8px; color: var(--ink-3); font-size: var(--fs-1); }
-.bigboard__empty {
-    display: block;
-    padding: 64px 24px;
-    background: var(--paper);
+.board-row--top1 .bl__no { background: var(--yellow-4); color: var(--ink); }
+.board-row--top2 .bl__no { background: var(--white); color: var(--ink); }
+.board-row--top3 .bl__no { background: var(--paper); color: var(--ink); }
+
+.bl__name {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.bl__meta {
+    overflow: hidden;
+    color: var(--ink-3);
+    font-size: var(--fs-1);
+    line-height: var(--lh-1);
+    text-align: right;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.bl__meta.is-live { color: var(--pink-1); }
+.bl__meta.is-done { color: var(--green-1); }
+.bl__score {
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 8px;
+    justify-self: end;
+    overflow: hidden;
+    color: var(--pink-1);
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.bl__score small {
+    color: var(--ink-3);
+    font-size: var(--fs-1);
+    line-height: var(--lh-1);
+}
+
+.board-list__empty {
+    display: grid;
+    place-items: center;
+    min-height: 240px;
+    padding: 24px;
+    background: var(--paper-2);
     border: 4px solid transparent;
     border-image: var(--bi-ink) 4;
+    background-clip: padding-box;
     color: var(--ink-3);
     font-size: var(--fs-2);
     line-height: var(--lh-2);
     text-align: center;
 }
 
-/* ---------------------------------------------------------------- 奖励说明 */
-.prize { display: flex; align-items: flex-start; gap: 24px; min-height: 0; }
-.prize .px-icon { margin-top: 4px; }
-.prize .sec { margin-bottom: 4px; }
+/* ---------------------------------------------------------------- 扫码入口 */
+.board-qr__row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+.board-qr__item {
+    display: grid;
+    align-content: start;
+    justify-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+.board-qr .qr-frame {
+    width: 100%;
+    max-width: 200px;
+    padding: 8px;
+}
+.board-qr .qr-frame--fallback {
+    aspect-ratio: auto;
+    min-height: 176px;
+    padding: 8px;
+}
+.qr-fallback {
+    display: grid;
+    gap: 8px;
+    width: 100%;
+    text-align: center;
+}
+.qr-fallback__note { color: var(--ink-3); line-height: var(--lh-1); }
+.qr-fallback__url { color: var(--pink-1); line-height: var(--lh-1); word-break: break-all; }
+.board-qr__label {
+    font-size: var(--fs-1);
+    line-height: var(--lh-1);
+    text-align: center;
+}
+.board-qr .qr-url {
+    font-size: var(--fs-1);
+    line-height: var(--lh-1);
+    text-align: center;
+}
+
+/* ---------------------------------------------------------------- 全场数据 */
+.board-kv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.board-kv > div { padding: 0 8px 4px; }
+
+/* ---------------------------------------------------------------- 最近抽奖 */
+.board-draws__note {
+    margin-left: auto;
+    color: var(--ink-3);
+    font-size: var(--fs-1);
+    line-height: var(--lh-1);
+    white-space: nowrap;
+}
+.board-draws__list { display: grid; gap: 4px; }
+.board-draw {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    min-width: 0;
+    min-height: 36px;
+    padding: 0 8px;
+    background: var(--paper-2);
+    font-size: var(--fs-1);
+    line-height: var(--lh-1);
+}
+.board-draw:nth-child(odd) { background: var(--paper-3); }
+.board-draw__no {
+    flex: none;
+    display: grid;
+    place-items: center;
+    min-height: 24px;
+    padding: 0 4px;
+    background: var(--paper);
+    border: 4px solid var(--ink);
+    color: var(--pink-1);
+    font-size: var(--fs-2);
+    line-height: var(--lh-2);
+    font-variant-numeric: tabular-nums;
+}
+.board-draw__who {
+    flex: 1 1 120px;
+    min-width: 0;
+    overflow: hidden;
+    font-size: var(--fs-2);
+    line-height: var(--lh-2);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.board-draw__prize {
+    flex: none;
+    padding: 0 8px;
+    background: var(--yellow-2);
+    border: 4px solid var(--ink);
+    line-height: var(--lh-2);
+    white-space: nowrap;
+}
+.board-draw__prize.is-pending {
+    background: var(--paper);
+    color: var(--ink-3);
+}
+/* 抽奖球在台账里压成单行小铭牌，一条记录只占一行 */
+.board-draw .draw-balls {
+    flex: none;
+    flex-wrap: nowrap;
+    gap: 4px;
+}
+.board-draw .draw-balls span {
+    grid-auto-flow: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 0 4px;
+    font-size: var(--fs-1);
+    line-height: var(--lh-1);
+}
+.board-draw .draw-balls b {
+    font-size: var(--fs-1);
+    line-height: var(--lh-1);
+}
+.board-draws__empty {
+    padding: 24px 8px;
+    background: var(--paper-2);
+    color: var(--ink-3);
+    line-height: var(--lh-1);
+    text-align: center;
+}
+
+/* ---------------------------------------------------------------- 奖励规则 */
+.board-side .board-prize { padding: 8px 16px; }
+.board-prize__list {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+}
+.board-prize__list li {
+    padding: 4px 8px;
+    background: var(--paper-2);
+    border: 4px solid var(--ink);
+    line-height: var(--lh-1);
+}
+.board-prize__list b {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--pink-1);
+    line-height: var(--lh-1);
+}
+
+/* ---------------------------------------------------------------- 大屏放大 */
+@media (min-width: 1500px) {
+    .board-row {
+        grid-template-columns: 72px minmax(0, 1fr) 240px 220px;
+        min-height: 44px;
+        font-size: var(--fs-3);
+        line-height: var(--lh-3);
+    }
+    .bl__no {
+        min-height: 36px;
+        font-size: var(--fs-3);
+        line-height: var(--lh-3);
+    }
+    .board-list__empty { min-height: 320px; }
+}
+
+/* 1920 投影：抽奖记录排两列，6 条只占三行 */
+@media (min-width: 1700px) {
+    .board-draws__list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 4px 12px;
+    }
+}
+
+/* ---------------------------------------------------------------- 窄屏：单列 */
+@media (max-width: 1180px) {
+    .board {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+            "now"
+            "main"
+            "side"
+            "draws";
+    }
+    .board-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .board-qr { grid-column: 1 / -1; }
+}
 
 @media (max-width: 860px) {
-    .board { width: calc(100% - 24px); padding-top: 16px; }
-    .join { grid-template-columns: minmax(0, 1fr); }
-    .join-url { font-size: var(--fs-2); line-height: var(--lh-2); }
-    .bigboard li { grid-template-columns: 64px minmax(0, 1fr) auto; gap: 8px; padding: 8px 12px; min-height: 56px; }
-    .bb__no { font-size: var(--fs-2); line-height: var(--lh-2); }
-    .prize { flex-direction: column; gap: 8px; }
+    .board {
+        width: calc(100% - 24px);
+        padding: 12px 0 24px;
+    }
+    .topbar__inner,
+    .board-footer { width: calc(100% - 24px); }
+    .topbar h1 {
+        font-size: var(--fs-2);
+        line-height: var(--lh-2);
+        white-space: normal;
+    }
+    .topbar .player-chip {
+        min-width: 96px;
+        padding: 8px 12px;
+    }
+    .topbar .player-chip b {
+        font-size: var(--fs-2);
+        line-height: var(--lh-2);
+    }
+    .board-now {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+    }
+    .board-now .num-big { width: 128px; }
+    .board-now__note { white-space: normal; }
+    .board-side { grid-template-columns: minmax(0, 1fr); }
+    .board-row {
+        grid-template-columns: 48px minmax(0, 1fr) auto;
+        gap: 8px;
+        padding: 4px 8px 4px 4px;
+    }
+    .board-row .bl__meta { display: none; }
+    .bl__no {
+        min-height: 24px;
+        font-size: var(--fs-1);
+        line-height: var(--lh-1);
+    }
+    .board-entries { display: none; }
+    .board-prize__list { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 520px) {
+    .board-qr__row { grid-template-columns: minmax(0, 1fr); }
+    .board-draws .sec { flex-wrap: wrap; }
+    .board-draws__note {
+        flex-basis: 100%;
+        margin-left: 0;
+        text-align: right;
+    }
 }
