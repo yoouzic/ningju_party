@@ -16,6 +16,16 @@
         var fitK = 0;
         function fitScreen() {
             var avail = screen.clientWidth;
+            /* 画布会把 #stage 的 min-content 撑大，必须用外壳内容宽度兜底，
+               否则 390px 手机会算出 2 倍画布并横向溢出 */
+            var shell = screen.parentElement;
+            if (shell) {
+                var cs = global.getComputedStyle(shell);
+                var inner = shell.clientWidth
+                    - (parseFloat(cs.paddingLeft) || 0)
+                    - (parseFloat(cs.paddingRight) || 0) - 8;
+                if (inner > 0 && avail > inner) avail = inner;
+            }
             if (!avail) return;
             var dpr = global.devicePixelRatio || 1;
             var k = Math.max(1, Math.floor(avail * dpr / PG.Layout.W));
@@ -59,7 +69,8 @@
             if (mode === 'practice') {
                 game.s.practice = true;
                 game.s.online = false;
-                game.emit('onPartyState', { text: '练习模式 · 成绩不计入榜单', kind: 'practice' });
+                game.emit('onPartyState', { text: '练习模式 · 成绩不计入榜单', kind: 'practice',
+                                            me: null, stats: null });
                 return;
             }
             game.s.online = true;
@@ -76,10 +87,18 @@
 
                     game.emit('onBoard', (st.board && st.board.entries) || []);
 
-                    /* 名次取服务端榜单里自己的位置 */
-                    if (st.board && st.board.entries && st.me) {
-                        for (var i = 0; i < st.board.entries.length; i++) {
-                            if (st.board.entries[i].player_id === st.me.id) { s.rank = st.board.entries[i].rank; break; }
+                    /* 名次：优先采用服务端本轮结算结果 st.me.result.rank，否则扫榜单 */
+                    if (st.me) {
+                        var myRank = st.me.result && st.me.result.rank;
+                        if (myRank) {
+                            s.rank = myRank;
+                        } else if (st.board && st.board.entries) {
+                            for (var i = 0; i < st.board.entries.length; i++) {
+                                if (st.board.entries[i].player_id === st.me.id) {
+                                    s.rank = st.board.entries[i].rank;
+                                    break;
+                                }
+                            }
                         }
                     }
 
@@ -97,7 +116,8 @@
 
                     if (r.status === 'running' && r.id !== lastRoundId) {
                         if (!PG.Net.getPlayer()) {
-                            game.emit('onPartyState', { text: '请先登录，再等待主持人开赛', kind: 'need-login', round: r });
+                            game.emit('onPartyState', { text: '请先登录，再等待主持人开赛', kind: 'need-login',
+                                                        round: r, me: st.me, stats: st.stats });
                         } else {
                             lastRoundId = r.id;
                             game.beginRound(r);

@@ -154,13 +154,14 @@ canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
 .screen {
     display: grid;
     place-items: center;
+    min-width: 0;
     padding: 0;
     background: var(--ink);
     border: 4px solid var(--ink);
     box-shadow: 0 0 0 4px var(--ink-3);
     line-height: 0;
 }
-.screen__view { position: relative; display: block; font-size: var(--fs-1); line-height: var(--lh-3); }
+.screen__view { position: relative; display: block; min-width: 0; font-size: var(--fs-1); line-height: var(--lh-3); }
 #game-canvas { display: block; touch-action: none; cursor: pointer; }
 
 /* 弹层：用 50% 棋盘格点阵压暗画面，代替半透明遮罩 + 模糊 */

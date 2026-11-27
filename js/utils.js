@@ -36,6 +36,13 @@
 
         pad2: function (n) { return n < 10 ? '0' + n : '' + n; },
 
+        /* HTML 转义：昵称等外部文本拼进 innerHTML 前必须过一遍 */
+        escapeHtml: function (s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        },
+
         /* 数字千分位，纯字符串处理避免依赖国际化 API */
         group: function (n) {
             var s = String(Math.round(n)), out = '', c = 0;

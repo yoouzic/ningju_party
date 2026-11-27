@@ -8,6 +8,9 @@
     var C = PG.CONFIG, U = PG.Utils, R = PG.Rules, A = PG.Audio, ST = PG.Storage;
     var PHASE = PG.PHASE;
     var CARET = '<span class="caret" aria-hidden="true">▶</span>';
+    var NOTE_ONLINE = '榜单来自晚会服务端，所有手机的成绩实时汇总。';
+    var NOTE_LOCAL = '当前为单机演示（本地模拟 12 位信息员）。用 server.py 托管后即为全场实时榜单。';
+    var NOTE_QUIZ = '当前是第②环节 答题竞速 · 请打开答题页';
 
     function $(id) { return global.document.getElementById(id); }
     function show(el, yes) { if (el) el.classList.toggle('hidden', !yes); }
@@ -53,6 +56,7 @@
             var online = false;
             var loggedIn = !!PG.Net.getPlayer();
             var waiting = false;
+            var joinedAt = 0;
 
             /* 像素图标挂载 */
             var icons = doc.querySelectorAll('[data-icon]');
@@ -138,6 +142,7 @@
                     syncIdentity(d.player);
                     if (PG.Net.isOnline()) {
                         loggedIn = true;
+                        joinedAt = Date.now();
                         setWaiting(true);
                         toast('登录成功 · 等待主持人开赛');
                         doc.dispatchEvent(new Event('ningju:joined'));
@@ -155,6 +160,15 @@
                 A.init();
                 if (online) game.waitReset();     /* 正式模式不开本地倒计时 */
                 else game.restart();
+            }
+
+            function changePlayer() {
+                PG.Net.forget();
+                loggedIn = false;
+                setWaiting(false);
+                syncIdentity(null);
+                if (game.s.online) game.waitReset();   /* 清掉上一轮画布，避免残留成绩 */
+                toast('已更换身份');
             }
 
             /* -------------------------------------------------------- HUD */
@@ -202,7 +216,7 @@
                     var score = r.score === undefined ? r.correct || 0 : r.score;
                     html += '<li class="' + cls.join(' ') + '">' +
                         '<span class="rank__no">' + U.pad2(r.rank) + '</span>' +
-                        '<span class="rank__name">' + r.name + '</span>' +
+                        '<span class="rank__name">' + U.escapeHtml(r.name) + '</span>' +
                         '<span class="rank__score">' + U.group(score) + '</span></li>';
                 }
                 return html;
@@ -264,12 +278,13 @@
                 } else if (phase === PHASE.COUNTDOWN) {
                     el.stateText.textContent = '倒计时';
                     el.bPrimary.textContent = '准备中'; el.bPrimary.disabled = true;
-                    el.bPause.disabled = true; el.bRestart.disabled = false;
+                    el.bPause.disabled = true; el.bRestart.disabled = online;
                 } else if (phase === PHASE.PLAYING) {
                     el.stateText.textContent = '进行中';
                     el.bPrimary.textContent = '进行中'; el.bPrimary.disabled = true;
                     el.bPause.disabled = false; el.bPause.textContent = '暂停';
-                    el.bRestart.disabled = false;
+                    /* 正式模式不能本地重开：本地重开无法重新进入服务端轮次 */
+                    el.bRestart.disabled = online;
                 } else if (phase === PHASE.PAUSED) {
                     el.stateText.textContent = '已暂停';
                     setPrimary(CARET + '继续游戏'); el.bPrimary.disabled = false;
@@ -300,18 +315,24 @@
 
             function showResult(result, record) {
                 var v = R.verdict(result);
-                el.ribbon.textContent = result.practice ? 'PRACTICE' :
+                /* game.reset() 会清掉 s.practice，练习模式以页面模式为准 */
+                var isPractice = result.practice || !online;
+                el.ribbon.textContent = isPractice ? 'PRACTICE' :
                     (result.pending ? 'WAITING' : v.ribbon);
-                el.ribbon.className = 'dialog__tab ' + (result.practice || result.pending ? 'tab--blue' : v.cls);
-                el.resultTitle.textContent = result.practice ? '练习完成' :
+                el.ribbon.className = 'dialog__tab ' + (isPractice || result.pending ? 'tab--blue' : v.cls);
+                el.resultTitle.textContent = isPractice ? '练习完成' :
                     (result.pending ? '等待主持人结算' : v.title);
-                el.resultDesc.textContent = result.practice
+                el.resultDesc.textContent = isPractice
                     ? '练习模式成绩不计入晚会榜单，正式环节请连接晚会服务端。'
                     : (result.pending
                         ? '本环节由主持人结束后统一锁定前 10 名，请查看大屏榜单领奖。'
                         : v.desc);
-                var rankLabel = result.practice ? '不计' :
-                    (result.rank ? '第 ' + result.rank + ' 名' : '待确认');
+                el.againLabel.textContent = online ? '返回等待' : '再来一局';
+                el.resultNote.textContent = online
+                    ? '成绩已由服务端锁定，请查看大屏榜单；等待主持人下一轮'
+                    : '练习成绩只保存在本机';
+                var rankLabel = isPractice ? '不计' :
+                    (result.rank ? '第 ' + result.rank + ' 名' : (online ? '等待主持人结算' : '待确认'));
                 var stats = [
                     ['用时', result.elapsed.toFixed(1) + ' 秒'],
                     ['跑道进度', Math.floor(result.progress) + '%'],
@@ -338,6 +359,7 @@
                         var label = ok ? '已开启' : '未授权';
                         el.bShake.textContent = label;
                         el.bShakeStart.textContent = ok ? '摇一摇 已开启' : '摇一摇 未授权';
+                        el.bShakeWait.textContent = ok ? '摇一摇 已开启' : '摇一摇 未授权';
                         toast(ok ? '摇动手机即可加速' : '未能开启摇一摇，连点屏幕同样可以加速');
                     });
             }
@@ -348,20 +370,27 @@
             if (touchCapable && PG.Input.shakeSupported()) {
                 show(el.bShake, true);
                 show(el.bShakeStart, true);
+                show(el.bShakeWait, true);
                 el.bShake.addEventListener('click', enableShakeFlow);
                 el.bShakeStart.addEventListener('click', enableShakeFlow);
+                el.bShakeWait.addEventListener('click', enableShakeFlow);
             } else {
                 el.bShake.parentNode.classList.add('keys--noshake');
             }
 
             /* -------------------------------------------------------- 按钮 */
-            el.bPrimary.addEventListener('click', begin);
+            el.bPrimary.addEventListener('click', function () {
+                /* 正式模式结算后只回等待，不能再 join 领取新身份 */
+                if (online && game.s.phase === PHASE.OVER) game.waitReset();
+                else begin();
+            });
             el.bStartInline.addEventListener('click', begin);
             el.bPause.addEventListener('click', function () { game.pause(); });
-            el.bRestart.addEventListener('click', function () { A.init(); game.restart(); });
+            el.bRestart.addEventListener('click', resetLocal);
             el.bResume.addEventListener('click', function () { game.resume(); });
-            el.bPauseRestart.addEventListener('click', function () { A.init(); game.restart(); });
-            el.bAgain.addEventListener('click', function () { A.init(); game.restart(); });
+            el.bPauseRestart.addEventListener('click', resetLocal);
+            el.bAgain.addEventListener('click', resetLocal);
+            el.bChangePlayer.addEventListener('click', changePlayer);
             el.bSound.addEventListener('click', function () {
                 var on = A.setEnabled(!A.isEnabled());
                 el.bSound.textContent = on ? '音效 开' : '音效 关';
@@ -388,12 +417,52 @@
                 onResult: showResult,
                 onBoard: refreshBoard,
                 onMode: function (mode) {
-                    var online = mode === 'api';
+                    online = (mode === 'online');
                     el.modeBadge.textContent = online ? '全场实时' : '本地演示';
                     el.modeBadge.className = 'plate ' + (online ? 'plate--online' : 'plate--quiet');
-                    el.boardNote.textContent = online
-                        ? '榜单来自晚会服务端，所有手机的成绩实时汇总。'
-                        : '当前为单机演示（本地模拟 12 位信息员）。用 server.py 托管后即为全场实时榜单。';
+                    el.boardNote.textContent = online ? NOTE_ONLINE : NOTE_LOCAL;
+                    if (!online) {
+                        loggedIn = false;
+                        setWaiting(false);
+                        setPartyBar('practice', '练习模式 · 成绩不计入榜单');
+                    } else {
+                        /* 初始化时 showPhase(READY) 先于 detect()，这里补一次正式模式文案 */
+                        setWaiting(loggedIn);
+                    }
+                },
+                onPartyState: function (st) {
+                    st = st || {};
+                    var kind = st.kind || 'idle';
+                    if (kind === 'practice') {
+                        loggedIn = false;
+                        setWaiting(false);
+                    }
+                    setPartyBar(kind, st.text || '');
+                    if (waiting && st.text) el.waitText.textContent = st.text;
+
+                    /* 服务端已无本人：本机 token 失效（数据库重建 / 身份被清除）。
+                       登录成功 2.5 秒内跳过，避免登录前发出的轮询响应误踢。 */
+                    if (online && loggedIn && !st.me && Date.now() - joinedAt > 2500) {
+                        PG.Net.forget();
+                        loggedIn = false;
+                        setWaiting(false);
+                        syncIdentity(null);
+                        toast('登录已失效，请重新登录');
+                    }
+
+                    if (st.round && st.round.kind === 'quiz') {
+                        el.boardNote.textContent = NOTE_QUIZ;
+                        el.waitText.textContent = '当前是答题环节 · 请打开答题页';
+                    } else if (online) {
+                        el.boardNote.textContent = NOTE_ONLINE;
+                    }
+
+                    /* 已登录玩家必须停在「等待开赛」，不能被登录表单顶掉 */
+                    if (loggedIn && online && game.s.phase === PHASE.READY &&
+                        (kind === 'idle' || kind === 'closed' || kind === 'running')) {
+                        setWaiting(true);
+                        if (st.text) el.waitText.textContent = st.text;
+                    }
                 },
                 onScoreSubmitted: function (result, remote) {
                     if (remote && remote.rank) toast('成绩已上传 · 全场第 ' + remote.rank + ' 名');
