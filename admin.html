@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2e222f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%232e222f'/%3E%3Crect x='6' y='2' width='4' height='12' fill='%23f9c22b'/%3E%3Crect x='2' y='6' width='12' height='4' fill='%23f9c22b'/%3E%3Crect x='4' y='4' width='8' height='8' fill='%23f04f78'/%3E%3C/svg%3E">
+<title>主持人控制台 | 21届凝聚力晚会</title>
+<!--
+  ============================================================================
+  admin.html —— ③ 主持人控制台
+  ----------------------------------------------------------------------------
+     · 登录后每 2 秒拉取 admin/state，只刷新只读区域；
+       题库 textarea、参数输入、奖品输入不会被轮询覆盖。
+     · 开赛 / 结算 / 作废 / 题库 / 奖品 / 核销 / 抽奖全部由服务端裁定，
+       本页只发指令、显示结果，不做任何本地推算。
+     · 页面语言沿用像素体系：纯色 + 4px 硬边 + 硬投影，禁止渐变与模糊。
+  ============================================================================
+-->
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/font.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/pixel-ui.css">
+<link rel="stylesheet" href="css/party.css">
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+<header class="topbar">
+    <div class="topbar__inner">
+        <div class="deco" aria-hidden="true">
+            <i class="px-icon" data-icon="star" data-scale="2" style="right:32%;top:16px"></i>
+            <i class="px-icon" data-icon="star" data-scale="1" style="right:24%;top:48px;animation-delay:.4s"></i>
+            <i class="px-icon" data-icon="gift" data-scale="3" style="right:8%;top:16px"></i>
+        </div>
+        <div class="logo"><i class="px-icon" data-icon="star" data-scale="4"></i></div>
+        <div class="topbar__text">
+            <p class="kicker">
+                <span>21届凝聚力晚会</span><span>主持人控制台</span>
+                <span class="plate plate--quiet" id="mode-badge">连接中</span>
+            </p>
+            <h1>主持人 <em>控制台</em></h1>
+            <p class="lede">开赛 · 结算 · 题库 · 奖品 · 核销 · 抽奖，全部以服务端结果为准</p>
+        </div>
+        <div class="player-chip"><span>管理会话</span><b id="admin-chip">未登录</b></div>
+    </div>
+</header>
+
+<main class="admin-main">
+    <section class="party-bar admin-status" id="admin-status" role="status" aria-live="polite">正在连接晚会服务端…</section>
+
+    <!-- ================= 登录闸门 ================= -->
+    <section class="admin-login" id="login-view" aria-label="主持人登录">
+        <div class="party-card">
+            <h2 class="sec"><span class="sq sq--pink" aria-hidden="true"></span>主持人登录</h2>
+            <p class="admin-hint">口令只用于换取管理令牌，页面不会显示、记录或回填口令。</p>
+            <label class="form-row">
+                <span>管理口令</span>
+                <input id="admin-password" type="password" autocomplete="current-password" placeholder="输入管理口令">
+            </label>
+            <div class="form-actions">
+                <button class="btn btn--primary btn--block" id="btn-login" type="button">登录控制台</button>
+            </div>
+            <p class="party-msg" id="login-msg" role="status" aria-live="polite"></p>
+            <p class="admin-note">登录状态保存在本机浏览器；换电脑请重新输入口令。</p>
+        </div>
+    </section>
+
+    <!-- ================= 控制台 ================= -->
+    <div class="admin-console hidden" id="console-view">
+        <div class="admin-toolbar">
+            <span class="pill pill--live">已登录</span>
+            <span class="admin-hint">自动刷新间隔 2 秒 · 只更新只读区域，不覆盖正在编辑的表单</span>
+            <button class="btn" id="btn-logout" type="button">退出登录</button>
+        </div>
+
+        <div class="admin-layout">
+            <!-- ---------- 轮次 ---------- -->
+            <section class="party-card admin-span" aria-labelledby="round-sec-title">
+                <h2 class="sec" id="round-sec-title"><span class="sq sq--yellow" aria-hidden="true"></span>轮次控制</h2>
+                <div class="party-kv">
+                    <div><span>环节</span><b id="round-kind">—</b></div>
+                    <div><span>状态</span><b id="round-status">—</b></div>
+                    <div><span>剩余秒数</span><b id="round-left">—</b></div>
+                    <div><span>轮次编号</span><b id="round-id">—</b></div>
+                </div>
+                <p class="admin-round-title">轮次标题：<b id="round-title">—</b></p>
+                <label class="form-row admin-field-inline">
+                    <span>开赛时长（秒）</span>
+                    <input id="open-duration" type="number" min="5" max="3600" step="5" value="45" inputmode="numeric">
+                </label>
+                <div class="form-actions">
+                    <button class="btn btn--yellow" id="btn-open-shake" type="button">开启摇一摇</button>
+                    <button class="btn btn--blue" id="btn-open-quiz" type="button">开启答题</button>
+                    <button class="btn btn--primary" id="btn-close-round" type="button">结束本轮并结算</button>
+                    <button class="btn" id="btn-void-round" type="button">作废本轮</button>
+                </div>
+                <p class="party-msg" id="round-msg" role="status" aria-live="polite"></p>
+                <div class="hidden" id="round-result">
+                    <h3 class="admin-sub">本轮结算名单</h3>
+                    <ol class="party-list" id="round-top"></ol>
+                </div>
+            </section>
+
+            <!-- ---------- 参数 ---------- -->
+            <section class="party-card" aria-labelledby="settings-sec-title">
+                <h2 class="sec" id="settings-sec-title"><span class="sq sq--blue" aria-hidden="true"></span>比赛参数</h2>
+                <div class="form-grid">
+                    <label class="form-row"><span>取前几名</span><input id="set-top-n" type="number" min="1" max="200" step="1" inputmode="numeric"></label>
+                    <label class="form-row"><span>默认时长（秒）</span><input id="set-duration" type="number" min="5" max="3600" step="5" inputmode="numeric"></label>
+                    <label class="form-row"><span>终点步数</span><input id="set-target" type="number" min="10" max="5000" step="10" inputmode="numeric"></label>
+                    <label class="form-row"><span>礼物总数</span><input id="set-gift" type="number" min="0" max="1000" step="1" inputmode="numeric"></label>
+                    <label class="form-row"><span>每秒步数上限</span><input id="set-rate" type="number" min="1" max="60" step="1" inputmode="numeric"></label>
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn--primary btn--block" id="btn-save-settings" type="button">保存参数</button>
+                </div>
+                <p class="party-msg" id="settings-msg" role="status" aria-live="polite"></p>
+            </section>
+
+            <!-- ---------- 统计 ---------- -->
+            <section class="party-card" aria-labelledby="stats-sec-title">
+                <h2 class="sec" id="stats-sec-title"><span class="sq sq--green" aria-hidden="true"></span>全场统计</h2>
+                <div class="party-kv">
+                    <div><span>玩家</span><b id="stat-players">0</b></div>
+                    <div><span>已发刮刮乐</span><b id="stat-cards">0 / 0</b></div>
+                    <div><span>抽奖次数</span><b id="stat-draws">0</b></div>
+                </div>
+                <p class="admin-hint">统计来自服务端 admin/state，随轮询自动更新。</p>
+            </section>
+
+            <!-- ---------- 题库 ---------- -->
+            <section class="party-card admin-span" aria-labelledby="questions-sec-title">
+                <h2 class="sec" id="questions-sec-title">
+                    <span class="sq sq--pink" aria-hidden="true"></span>题库模板
+                    <span class="pill" id="q-count">当前模板 0 题</span>
+                </h2>
+                <p class="admin-hint">这里的修改只影响下一轮答题；服务端在开赛时才把模板复制成当轮题目，已开始的轮次不受影响。</p>
+                <textarea class="code-block" id="questions-json" spellcheck="false" aria-label="题库 JSON"></textarea>
+                <p class="admin-hint">格式：数组，每项 {prompt, qtype: '单选'|'多选', options: [...], answer: '文本' 或 ['文本', ...]}。</p>
+                <div class="form-actions">
+                    <button class="btn btn--primary" id="btn-save-questions" type="button">保存题库</button>
+                </div>
+                <p class="party-msg" id="questions-msg" role="status" aria-live="polite"></p>
+            </section>
+
+            <!-- ---------- 奖品 ---------- -->
+            <section class="party-card admin-span" aria-labelledby="prizes-sec-title">
+                <h2 class="sec" id="prizes-sec-title"><span class="sq sq--yellow" aria-hidden="true"></span>奖品与库存</h2>
+                <div class="ptable-wrap">
+                    <table class="ptable">
+                        <thead>
+                            <tr>
+                                <th scope="col">奖品名称</th>
+                                <th scope="col">总库存</th>
+                                <th scope="col">每人上限</th>
+                                <th scope="col">已抽</th>
+                                <th scope="col">启用</th>
+                            </tr>
+                        </thead>
+                        <tbody id="prizes-body"></tbody>
+                    </table>
+                </div>
+                <p id="prize-total" class="pill">预计最多可发 0 人</p>
+                <div class="form-actions">
+                    <button class="btn btn--primary" id="btn-save-prizes" type="button">保存奖品</button>
+                </div>
+                <p class="party-msg" id="prizes-msg" role="status" aria-live="polite"></p>
+            </section>
+
+            <!-- ---------- 领奖核销 ---------- -->
+            <section class="party-card admin-span" aria-labelledby="rewards-sec-title">
+                <h2 class="sec" id="rewards-sec-title"><span class="sq sq--green" aria-hidden="true"></span>发奖台账与核销</h2>
+                <div class="ptable-wrap">
+                    <table class="ptable">
+                        <thead>
+                            <tr>
+                                <th scope="col">轮次</th>
+                                <th scope="col">名次</th>
+                                <th scope="col">玩家</th>
+                                <th scope="col">刮刮乐</th>
+                                <th scope="col">小礼物</th>
+                                <th scope="col">领取状态</th>
+                                <th scope="col">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rewards-body"></tbody>
+                    </table>
+                </div>
+                <p class="party-msg" id="claim-msg" role="status" aria-live="polite"></p>
+                <p class="admin-hint">核销结果写入 rewards 台账，可重复核对；已核销的按钮会自动置灰。</p>
+            </section>
+
+            <!-- ---------- 抽奖 ---------- -->
+            <section class="party-card" aria-labelledby="draw-sec-title">
+                <h2 class="sec" id="draw-sec-title"><span class="sq sq--yellow" aria-hidden="true"></span>幸运抽奖</h2>
+                <div class="admin-draw">
+                    <div>
+                        <p class="admin-draw__label">抽中编号</p>
+                        <b class="num-big num-big--idle" id="draw-number">---</b>
+                        <div class="draw-balls" id="draw-balls">
+                            <span>百位<b>?</b></span><span>十位<b>?</b></span><span>个位<b>?</b></span>
+                        </div>
+                        <p class="admin-draw__player" id="draw-player">持卡人：—</p>
+                        <div class="form-actions">
+                            <button class="btn btn--yellow btn--block" id="btn-draw-number" type="button">抽号</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="form-row">
+                            <span>开奖编号</span>
+                            <input id="draw-card" type="text" maxlength="3" inputmode="numeric" autocomplete="off" placeholder="如 038">
+                        </label>
+                        <div class="form-actions">
+                            <button class="btn btn--primary btn--block" id="btn-spin" type="button">开奖</button>
+                        </div>
+                        <p class="prize-banner" id="draw-prize">待开奖</p>
+                    </div>
+                </div>
+                <p class="party-msg" id="draw-msg" role="status" aria-live="polite"></p>
+                <h3 class="admin-sub">抽奖记录</h3>
+                <ol class="party-list" id="draw-history"></ol>
+                <div class="form-actions">
+                    <button class="btn" id="btn-draw-reset" type="button">清空抽奖记录</button>
+                </div>
+                <p class="admin-note">本页为系统抽奖；实体抽奖箱/转盘只做舞台道具，以控制台结果为准。</p>
+            </section>
+
+            <!-- ---------- 审计 ---------- -->
+            <section class="party-card" aria-labelledby="audit-sec-title">
+                <h2 class="sec" id="audit-sec-title"><span class="sq sq--blue" aria-hidden="true"></span>操作审计</h2>
+                <ol class="party-list" id="audit-list"></ol>
+                <p class="admin-hint">显示最近 30 条后台操作，时间按本机时钟显示。</p>
+            </section>
+        </div>
+    </div>
+</main>
+
+<footer class="site-footer">
+    <span>③ 主持人控制台 · 服务端权威</span>
+    <span><a href="index.html">① 摇一摇</a> · <a href="quiz.html">② 答题竞速</a> · <a href="board.html">大屏榜单</a></span>
+</footer>
+
+<!-- 经典脚本按依赖顺序加载，无构建步骤 -->
+<script src="js/utils.js"></script>
+<script src="js/sprites.js"></script>
+<script src="js/net.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>

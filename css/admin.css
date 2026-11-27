@@ -1,0 +1,138 @@
+/* ==========================================================================
+   admin.css —— 主持人控制台：只做页面布局
+   ----------------------------------------------------------------------------
+   组件外观全部复用 tokens.css / base.css / pixel-ui.css / party.css：
+   状态条、卡片、表单、表格、抽奖数字、奖品横幅都在 party.css 里。
+   本文件只负责栅格、吸顶状态条与表格尺寸，不新增配色与动效。
+   ========================================================================== */
+
+.admin-main {
+    display: grid;
+    gap: 16px;
+    width: min(calc(100% - 32px), 1280px);
+    margin: 0 auto;
+    padding: 16px 0 48px;
+}
+
+/* 状态条吸顶：滚动长表格时仍能看到当前轮次与剩余时间 */
+.admin-status {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+}
+
+/* ---------------------------------------------------------------- 登录 */
+.admin-login {
+    display: grid;
+    place-items: start center;
+    padding-top: 24px;
+}
+.admin-login .party-card { width: min(100%, 460px); }
+
+/* ---------------------------------------------------------------- 控制台骨架 */
+.admin-console { display: grid; gap: 16px; }
+.admin-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+.admin-toolbar .admin-hint { margin-left: auto; }
+.admin-toolbar .btn {
+    min-height: 32px;
+    padding: 0 12px;
+    font-size: var(--fs-1);
+    line-height: var(--lh-1);
+}
+
+.admin-layout {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+    align-items: start;
+}
+.admin-span { grid-column: 1 / -1; }
+
+/* ---------------------------------------------------------------- 轮次区 */
+.admin-field-inline {
+    grid-template-columns: 180px minmax(0, 1fr);
+    align-items: center;
+}
+.admin-round-title {
+    color: var(--ink-3);
+    line-height: var(--lh-1);
+}
+.admin-round-title b { color: var(--ink); }
+#round-top { margin-top: 8px; }
+
+/* ---------------------------------------------------------------- 题库 / 奖品 */
+#q-count { margin-left: auto; }
+.admin-sub {
+    color: var(--ink-3);
+    line-height: var(--lh-1);
+}
+.admin-hint,
+.admin-note {
+    color: var(--ink-3);
+    line-height: var(--lh-1);
+}
+#questions-json { margin-top: 8px; }
+#prize-total { margin-top: 8px; }
+
+/* ---------------------------------------------------------------- 抽奖区 */
+.admin-draw {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+}
+.admin-draw__label {
+    color: var(--ink-3);
+    line-height: var(--lh-1);
+}
+.admin-draw__player {
+    margin-top: 8px;
+    line-height: var(--lh-1);
+}
+.admin-draw .prize-banner {
+    font-size: var(--fs-2);
+    line-height: var(--lh-2);
+}
+#draw-balls { margin-top: 8px; }
+#draw-prize { margin-top: 12px; }
+#draw-history { margin-top: 8px; }
+
+/* ---------------------------------------------------------------- 表格尺寸 */
+.admin-layout .ptable-wrap { width: 100%; }
+.ptable td { vertical-align: middle; }
+.ptable td .btn {
+    min-height: 32px;
+    padding: 0 8px;
+    font-size: var(--fs-1);
+    line-height: var(--lh-1);
+}
+.ptable .admin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.ptable input[type="number"] { max-width: 104px; }
+#prizes-body input[type="text"] { min-width: 120px; }
+#rewards-body td { white-space: nowrap; }
+#rewards-body .pill { margin-right: 4px; }
+
+/* ---------------------------------------------------------------- 响应式 */
+@media (max-width: 1180px) {
+    .admin-layout {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 16px;
+    }
+    .admin-span { grid-column: auto; }
+}
+@media (max-width: 860px) {
+    .admin-main { width: calc(100% - 24px); padding-top: 12px; }
+    .admin-login { padding-top: 8px; }
+    .admin-draw { grid-template-columns: minmax(0, 1fr); }
+    .admin-field-inline { grid-template-columns: minmax(0, 1fr); }
+    .admin-toolbar .admin-hint { display: none; }
+}
