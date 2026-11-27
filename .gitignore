@@ -1,0 +1,7 @@
+pixel_rush.db
+pixel_rush.db-wal
+pixel_rush.db-shm
+__pycache__/
+*.pyc
+*.pyo
+.sdd/

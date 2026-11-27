@@ -1,0 +1,71 @@
+/* ==========================================================================
+   tokens.css —— 设计令牌：色阶 / 字号 / 网格 / 像素边框
+   ----------------------------------------------------------------------------
+   配色取自开源调色板 Resurrect 64（Kerrie Lake，lospec.com/palette-list/resurrect-64）
+   的粉、蓝、紫、黄、绿、红色阶，另加 3 个暖纸色作为界面底色。
+   像素画的上色原则（Pedro Medeiros《开始画像素画》）：阴影偏冷、亮部偏暖，
+   用「色相偏移」代替单纯的明暗，所以这里不再使用任何渐变、半透明与模糊阴影。
+
+   网格：一切尺寸是 4px 的整数倍；Zpix 为 12px 点阵，字号只用 12 的倍数。
+   ========================================================================== */
+
+:root {
+    color-scheme: light;
+
+    /* ---- 墨色（描边 / 文字）---- */
+    --ink: #2e222f;        /* 主描边：暖黑梅色，比纯黑柔和 */
+    --ink-2: #3e3546;      /* 外壳底 */
+    --ink-3: #625565;      /* 次要文字、内框 */
+    --ink-4: #966c6c;
+    --taupe: #ab947a;      /* 失效、分隔 */
+
+    /* ---- 纸色（面板底）---- */
+    --paper: #fdf3e0;
+    --paper-2: #f1dfbf;
+    --paper-3: #e2c9a2;
+
+    /* ---- 页面底（冷调淡紫，与阴影同向偏冷）---- */
+    --page: #e6def0;
+    --page-2: #d5cae6;
+    --page-3: #c3b6d6;
+
+    /* ---- 色阶（每阶 5 级，由深到浅）---- */
+    --pink-1: #831c5d;  --pink-2: #c32454;  --pink-3: #f04f78;  --pink-4: #f68181;  --pink-5: #fca790;
+    --blue-1: #323353;  --blue-2: #484a77;  --blue-3: #4d65b4;  --blue-4: #4d9be6;  --blue-5: #8fd3ff;
+    --purple-1: #45293f; --purple-2: #6b3e75; --purple-3: #905ea9; --purple-4: #a884f3; --purple-5: #eaaded;
+    --yellow-1: #f79617; --yellow-2: #f9c22b; --yellow-3: #fbb954; --yellow-4: #fbff86;
+    --green-1: #165a4c;  --green-2: #239063;  --green-3: #1ebc73;  --green-4: #91db69;
+    --red-1: #ae2334;    --red-2: #e83b3b;
+    --mint: #c7dcd0;
+    --silver: #9babb2;
+    --white: #ffffff;
+
+    /* ---- 与 zhaoxin_website 令牌的对应（色相一致，取色阶内的值）---- */
+    --brand-pink: var(--pink-3);
+    --brand-blue: var(--blue-4);
+    --brand-pink-deep: var(--pink-1);
+    --info-deep: var(--blue-1);
+    --success: var(--green-3);
+    --warning: var(--yellow-2);
+    --danger: var(--red-2);
+
+    /* ---- 字体：只用 12 的倍数 ---- */
+    --font-stack: "ZpixPixel", "Zpix", "Courier New", "Microsoft YaHei", monospace;
+    --fs-1: 12px;  --lh-1: 16px;
+    --fs-2: 24px;  --lh-2: 24px;
+    --fs-3: 36px;  --lh-3: 32px;
+    --fs-4: 48px;  --lh-4: 48px;
+    --fs-6: 72px;  --lh-6: 64px;
+
+    --u: 4px;
+    --max-w: 1120px;
+
+    /* ---- 像素圆角边框（NES.css 的 border-image 做法，12×12 九宫格，切 4px）---- */
+    --bi-ink: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' shape-rendering='crispEdges'%3E%3Cpath fill='%232e222f' d='M4 0h4v4H4zM0 4h4v4H0zM8 4h4v4H8zM4 8h4v4H4z'/%3E%3C/svg%3E");
+    --bi-taupe: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' shape-rendering='crispEdges'%3E%3Cpath fill='%23ab947a' d='M4 0h4v4H4zM0 4h4v4H0zM8 4h4v4H8zM4 8h4v4H4z'/%3E%3C/svg%3E");
+
+    /* ---- 抖动纹理：用纯色点阵代替半透明 ---- */
+    --checker-ink: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath fill='%232e222f' d='M0 0h4v4H0zM4 4h4v4H4z'/%3E%3C/svg%3E");
+    --dots-ink-25: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath fill='%232e222f' d='M0 0h4v4H0z'/%3E%3C/svg%3E");
+    --dots-page: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Cpath fill='%23d5cae6' d='M22 22h4v4h-4z'/%3E%3C/svg%3E");
+}

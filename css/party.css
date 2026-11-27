@@ -1,0 +1,279 @@
+/* ==========================================================================
+   party.css —— 正式晚会模式组件层（① 摇一摇 / ② 答题 / ③ 抽奖 / 大屏 / 控制台）
+   ----------------------------------------------------------------------------
+   只新增组件，不改 tokens / base / pixel-ui：
+     · 状态条沿用「纯色底 + 4px 硬边 + 色阶」的像素语言，不用渐变/半透明/模糊。
+     · 三页共用同一套 pane / 表单 / 列表 / 二维码框，避免画风再次跑偏。
+     · 动效全部 steps()，与 px-blink 等已有关键帧一致。
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- 状态条 */
+.party-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 4px 12px;
+    background: var(--ink-3);
+    color: var(--paper);
+    border: 4px solid var(--ink);
+    line-height: var(--lh-1);
+}
+.party-bar::before {
+    content: "";
+    flex: none;
+    width: 8px;
+    height: 8px;
+    background: var(--silver);
+}
+.party-bar--running { background: var(--green-2); color: var(--paper); }
+.party-bar--running::before { background: var(--yellow-4); animation: px-blink 0.5s steps(1, end) infinite; }
+.party-bar--waiting { background: var(--blue-2); color: var(--paper); }
+.party-bar--waiting::before { background: var(--blue-5); }
+.party-bar--closed { background: var(--yellow-1); color: var(--ink); }
+.party-bar--closed::before { background: var(--ink); }
+.party-bar--offline { background: var(--ink-3); color: var(--paper); }
+.party-bar--offline::before { background: var(--red-2); }
+.party-bar--error { background: var(--red-1); color: var(--paper); }
+.party-bar--error::before { background: var(--yellow-4); }
+
+/* ---------------------------------------------------------------- 刮刮乐编号 */
+.card-tag {
+    margin-bottom: 12px;
+    padding: 4px 8px;
+    background: var(--paper-2);
+    color: var(--ink-3);
+    border-left: 4px solid var(--pink-3);
+    line-height: var(--lh-1);
+    text-align: left;
+    font-variant-numeric: tabular-nums;
+}
+.card-tag--big {
+    padding: 12px 8px;
+    background: var(--yellow-2);
+    color: var(--ink);
+    border: 4px solid var(--ink);
+    font-size: var(--fs-2);
+    line-height: var(--lh-2);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+.wait__who { margin-bottom: 12px; color: var(--ink-3); line-height: var(--lh-1); }
+.wait__who b { color: var(--pink-1); }
+.wait__text {
+    margin: 12px 0;
+    padding: 8px;
+    background: var(--blue-5);
+    border: 4px solid var(--ink);
+    line-height: var(--lh-1);
+}
+
+/* ---------------------------------------------------------------- 通用栅格 / 卡片 */
+.party-main {
+    display: grid;
+    gap: 24px;
+    width: min(calc(100% - 32px), var(--max-w));
+    margin: 0 auto;
+    padding: 24px 0 48px;
+}
+.party-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.party-grid--wide { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+.party-grid--stack { grid-template-columns: minmax(0, 1fr); }
+.party-card {
+    min-width: 0;
+    padding: 24px;
+    background: var(--paper);
+    border: 4px solid transparent;
+    border-image: var(--bi-ink) 4;
+    background-clip: padding-box;
+}
+.party-card > * + * { margin-top: 12px; }
+.party-card .sec { margin-bottom: 12px; }
+.party-card--dark { background: var(--ink-2); color: var(--paper); }
+.party-card--dark .sec { border-bottom-color: var(--paper); }
+.party-card--dark .sub, .party-card--dark p { color: var(--mint); }
+
+.pnav { display: flex; flex-wrap: wrap; gap: 8px; }
+.pnav a {
+    display: inline-block;
+    padding: 0 8px;
+    background: var(--paper-2);
+    border: 4px solid var(--ink);
+    line-height: var(--lh-1);
+}
+.pnav a.is-current { background: var(--pink-3); color: var(--ink); }
+
+/* ---------------------------------------------------------------- 读数 / 铭牌 */
+.party-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 8px; }
+.party-kv > div {
+    padding: 4px 8px 8px;
+    background: var(--paper-2);
+    border: 4px solid var(--ink);
+    text-align: center;
+}
+.party-kv span { display: block; color: var(--ink-3); line-height: var(--lh-1); }
+.party-kv b { display: block; font-size: var(--fs-2); line-height: var(--lh-2); font-variant-numeric: tabular-nums; }
+.party-kv b.is-hot { color: var(--pink-1); }
+
+.pill {
+    display: inline-block;
+    padding: 0 8px;
+    background: var(--paper-2);
+    border: 4px solid var(--ink);
+    line-height: var(--lh-1);
+    white-space: nowrap;
+}
+.pill--live   { background: var(--green-3); color: var(--ink); animation: px-blink 1s steps(1, end) infinite; }
+.pill--wait   { background: var(--blue-5); }
+.pill--done   { background: var(--yellow-2); }
+.pill--muted  { background: var(--paper-3); color: var(--ink-3); }
+.pill--danger { background: var(--red-2); color: var(--paper); }
+
+.num-big {
+    display: block;
+    padding: 16px 8px;
+    background: var(--yellow-2);
+    border: 4px solid var(--ink);
+    color: var(--ink);
+    font-size: var(--fs-6);
+    line-height: var(--lh-6);
+    letter-spacing: 4px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+.num-big--idle { background: var(--paper-2); color: var(--taupe); }
+
+/* ---------------------------------------------------------------- 列表 / 台账 */
+.party-list { display: grid; gap: 4px; }
+.party-list li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 4px 8px;
+    background: var(--paper-2);
+    line-height: var(--lh-1);
+}
+.party-list li:nth-child(odd) { background: var(--paper-3); }
+.party-list li.is-me { background: var(--yellow-4); box-shadow: inset 0 0 0 4px var(--ink); }
+.party-list .grow { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.party-list .muted { color: var(--ink-3); }
+.party-list .num { color: var(--pink-1); font-variant-numeric: tabular-nums; }
+.party-empty {
+    padding: 24px 8px;
+    background: var(--paper-2);
+    color: var(--ink-3);
+    text-align: center;
+    line-height: var(--lh-1);
+}
+
+/* ---------------------------------------------------------------- 表单 */
+.form-row { display: grid; gap: 4px; }
+.form-row > span { color: var(--ink-3); line-height: var(--lh-1); }
+.form-row input, .form-row select, .code-block {
+    width: 100%;
+    min-height: 40px;
+    padding: 4px 8px;
+    background: var(--white);
+    color: var(--ink);
+    border: 4px solid var(--ink);
+    box-shadow: inset 4px 4px 0 var(--paper-2);
+    outline: none;
+    font: var(--fs-1) / var(--lh-1) var(--font-stack);
+    font-variant-numeric: tabular-nums;
+}
+.form-row input:focus, .code-block:focus { border-color: var(--pink-2); box-shadow: inset 4px 4px 0 var(--pink-5), 0 0 0 4px var(--pink-3); }
+.form-row input::placeholder { color: var(--taupe); }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+.form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.form-actions .btn { flex: 1 1 auto; font-size: var(--fs-1); line-height: var(--lh-1); min-height: 40px; }
+.code-block { min-height: 240px; resize: vertical; white-space: pre; overflow: auto; }
+
+.ptable { width: 100%; border-collapse: collapse; font-size: var(--fs-1); line-height: var(--lh-1); }
+.ptable th, .ptable td { padding: 4px; border: 4px solid var(--ink); text-align: left; }
+.ptable th { background: var(--paper-3); }
+.ptable td { background: var(--paper-2); }
+.ptable input { width: 100%; min-width: 0; padding: 4px; background: var(--white); border: 4px solid var(--ink); outline: none; font: inherit; }
+.ptable input[type="checkbox"] { width: 20px; height: 20px; }
+.ptable-wrap { overflow-x: auto; }
+
+.party-msg { min-height: var(--lh-1); line-height: var(--lh-1); }
+.party-msg--ok { color: var(--green-1); }
+.party-msg--err { color: var(--red-1); }
+
+/* ---------------------------------------------------------------- 二维码 */
+.qr-frame {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    max-width: 256px;
+    aspect-ratio: 1 / 1;
+    padding: 12px;
+    background: var(--paper);
+    border: 4px solid var(--ink);
+    box-shadow: 8px 8px 0 var(--taupe);
+}
+.qr-frame img { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+.qr-frame--fallback { font-size: var(--fs-1); line-height: var(--lh-1); text-align: center; word-break: break-all; }
+.qr-row { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+.qr-row .qr-frame { flex: none; }
+.qr-row .qr-text { flex: 1 1 240px; min-width: 0; }
+.qr-url { color: var(--pink-1); font-size: var(--fs-2); line-height: var(--lh-2); word-break: break-all; }
+
+/* ---------------------------------------------------------------- ② 答题 */
+.quiz-q { padding: 12px; background: var(--paper-2); border: 4px solid var(--ink); }
+.quiz-q + .quiz-q { margin-top: 12px; }
+.quiz-q__head { display: flex; gap: 8px; align-items: baseline; margin-bottom: 8px; line-height: var(--lh-1); }
+.quiz-q__no { flex: none; padding: 0 8px; background: var(--pink-3); border: 4px solid var(--ink); }
+.quiz-q__type { flex: none; color: var(--ink-3); }
+.quiz-q__prompt { font-size: var(--fs-2); line-height: var(--lh-2); }
+.quiz-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-top: 12px; }
+.quiz-opt {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 8px;
+    background: var(--white);
+    border: 4px solid var(--ink);
+    cursor: pointer;
+    line-height: var(--lh-1);
+}
+.quiz-opt:hover { background: var(--paper-3); }
+.quiz-opt:has(input:checked) { background: var(--yellow-2); box-shadow: inset 0 0 0 4px var(--pink-2); }
+.quiz-opt input { flex: none; width: 16px; height: 16px; accent-color: var(--pink-2); }
+.quiz-opt span { overflow-wrap: anywhere; }
+
+/* ---------------------------------------------------------------- ③ 抽奖 / 大屏 */
+.draw-balls { display: flex; flex-wrap: wrap; gap: 8px; }
+.draw-balls span {
+    display: grid;
+    place-items: center;
+    min-width: 48px;
+    padding: 4px 8px;
+    background: var(--blue-5);
+    border: 4px solid var(--ink);
+    line-height: var(--lh-1);
+}
+.draw-balls b { font-size: var(--fs-2); line-height: var(--lh-2); font-variant-numeric: tabular-nums; }
+.prize-banner {
+    padding: 16px;
+    background: var(--pink-3);
+    border: 4px solid var(--ink);
+    color: var(--ink);
+    font-size: var(--fs-3);
+    line-height: var(--lh-3);
+    text-align: center;
+}
+
+/* ---------------------------------------------------------------- 响应式 */
+@media (max-width: 860px) {
+    .party-main { width: calc(100% - 24px); padding-top: 16px; }
+    .party-grid, .party-grid--wide { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    .party-card { padding: 16px; }
+    .quiz-opts { grid-template-columns: minmax(0, 1fr); }
+    .num-big { font-size: var(--fs-4); line-height: var(--lh-4); }
+    .qr-row { gap: 16px; }
+    .qr-url { font-size: var(--fs-1); line-height: var(--lh-1); }
+}

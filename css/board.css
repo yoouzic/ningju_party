@@ -1,0 +1,107 @@
+/* ==========================================================================
+   board.css —— 大屏实时竞速榜（投影 / 电视全屏）
+   复用 tokens / base / pixel-ui 的同一套组件，只放大字号与行高
+   ========================================================================== */
+
+.board {
+    display: grid;
+    gap: 24px;
+    width: min(calc(100% - 32px), var(--max-w));
+    margin: 0 auto;
+    padding: 24px 0 48px;
+}
+
+/* ---------------------------------------------------------------- 加入方式 */
+.join {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 24px;
+    align-items: start;
+}
+.join .pane { min-height: 0; }
+.join-url {
+    color: var(--pink-1);
+    font-size: var(--fs-3);
+    line-height: var(--lh-3);
+    word-break: break-all;
+}
+.join .sub b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.join__steps { display: grid; gap: 8px; }
+.step {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 48px;
+    padding: 8px 16px;
+    background: var(--paper);
+    border: 4px solid transparent;
+    border-image: var(--bi-ink) 4;
+    font-size: var(--fs-2);
+    line-height: var(--lh-2);
+}
+.step b {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 24px;
+    height: 24px;
+    background: var(--pink-3);
+    border: 4px solid var(--ink);
+    line-height: var(--lh-1);
+}
+.step:nth-child(2) b { background: var(--blue-4); }
+.step:nth-child(3) b { background: var(--yellow-2); }
+
+/* ---------------------------------------------------------------- 榜单 */
+.bigboard { display: grid; gap: 12px; }
+.bigboard li {
+    display: grid;
+    grid-template-columns: 120px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 24px;
+    min-height: 72px;
+    padding: 8px 24px 8px 16px;
+    background: var(--paper);
+    border: 4px solid transparent;
+    border-image: var(--bi-ink) 4;
+    font-size: var(--fs-2);
+    line-height: var(--lh-2);
+}
+.bigboard li:nth-child(1) { background: var(--yellow-2); }
+.bigboard li:nth-child(2) { background: var(--blue-5); }
+.bigboard li:nth-child(3) { background: var(--pink-5); }
+.bb__no {
+    color: var(--pink-1);
+    font-size: var(--fs-4);
+    line-height: var(--lh-4);
+    font-variant-numeric: tabular-nums;
+}
+.bb__name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.bb__score { color: var(--pink-1); font-variant-numeric: tabular-nums; }
+.bb__score small { margin-left: 8px; color: var(--ink-3); font-size: var(--fs-1); }
+.bigboard__empty {
+    display: block;
+    padding: 64px 24px;
+    background: var(--paper);
+    border: 4px solid transparent;
+    border-image: var(--bi-ink) 4;
+    color: var(--ink-3);
+    font-size: var(--fs-2);
+    line-height: var(--lh-2);
+    text-align: center;
+}
+
+/* ---------------------------------------------------------------- 奖励说明 */
+.prize { display: flex; align-items: flex-start; gap: 24px; min-height: 0; }
+.prize .px-icon { margin-top: 4px; }
+.prize .sec { margin-bottom: 4px; }
+
+@media (max-width: 860px) {
+    .board { width: calc(100% - 24px); padding-top: 16px; }
+    .join { grid-template-columns: minmax(0, 1fr); }
+    .join-url { font-size: var(--fs-2); line-height: var(--lh-2); }
+    .bigboard li { grid-template-columns: 64px minmax(0, 1fr) auto; gap: 8px; padding: 8px 12px; min-height: 56px; }
+    .bb__no { font-size: var(--fs-2); line-height: var(--lh-2); }
+    .prize { flex-direction: column; gap: 8px; }
+}

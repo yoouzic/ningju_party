@@ -1,0 +1,354 @@
+/* ==========================================================================
+   pixel-ui.css —— 像素组件：按钮 / 铭牌 / 读数窗 / 能量条 / 标签页 / 榜单 / 动效
+   ----------------------------------------------------------------------------
+   立体感全部由「纯色 + 硬边」构成：
+     · 凸起 = 顶边亮一阶 + 底边暗一阶 + 外壳上再垫一层更深色的 4px「厚度」
+       （参考 JUI 的阶梯式凹凸与 NES.css 的 inset 阴影按钮）
+     · 按下 = 整体下移 4px 并去掉厚度，即物理「按进去」的反馈
+   动效只用 steps()，像逐帧动画一样跳变，不做缓动与模糊。
+   ========================================================================== */
+
+/* border-image 会切掉四角，背景必须裁到 padding-box，否则四角会露出底色小方块 */
+.btn, .tab, .dialog, .pane, .player-chip, .console, .step, .bigboard li {
+    background-clip: padding-box;
+}
+
+/* ---------------------------------------------------------------- 按钮体系 */
+.btn {
+    --bg: var(--paper);
+    --bg-hover: var(--white);
+    --fg: var(--ink);
+    --hi: var(--white);
+    --lo: var(--paper-2);
+    --ext: var(--ink);
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-height: 48px;
+    padding: 8px 16px;
+    color: var(--fg);
+    background: var(--bg);
+    border: 4px solid transparent;
+    border-image: var(--bi-ink) 4;
+    font-size: var(--fs-2);
+    line-height: var(--lh-2);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+    filter: drop-shadow(0 4px 0 var(--ext));
+}
+.btn::before {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    pointer-events: none;
+    box-shadow: inset 0 4px 0 var(--hi), inset 0 -4px 0 var(--lo);
+}
+.btn:hover:not(:disabled) { background: var(--bg-hover); }
+.btn:active:not(:disabled) { transform: translateY(4px); filter: none; }
+.btn:focus-visible { outline: 4px solid var(--yellow-4); outline-offset: 0; }
+.btn:disabled {
+    color: var(--silver);
+    background: var(--ink-3);
+    cursor: default;
+    filter: none;
+}
+.btn:disabled::before,
+.btn:disabled .caret { display: none; }
+
+.btn--primary { --bg: var(--pink-3); --bg-hover: var(--pink-4); --hi: var(--pink-5); --lo: var(--pink-2); --ext: var(--pink-1); }
+.btn--blue    { --bg: var(--blue-3); --bg-hover: var(--blue-4); --fg: var(--white); --hi: var(--blue-5); --lo: var(--blue-2); --ext: var(--blue-1); }
+.btn--yellow  { --bg: var(--yellow-2); --bg-hover: var(--yellow-3); --hi: var(--yellow-4); --lo: var(--yellow-3); --ext: var(--yellow-1); }
+.btn--blue:hover:not(:disabled) { --fg: var(--ink); }
+
+.btn--block { display: flex; width: 100%; }
+.btn--grow { flex: 1 1 auto; }
+.caret { animation: px-blink 1s steps(1, end) infinite; }
+
+/* 按键区：6 列栅格，两行等分，避免换行后参差不齐 */
+.keys { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px 12px; }
+.keys .btn { padding-left: 8px; padding-right: 8px; }
+.keys #btn-primary { grid-column: span 4; }
+.keys #btn-pause { grid-column: span 2; }
+.keys #btn-restart,
+.keys #btn-sound,
+.keys #btn-shake { grid-column: span 2; }
+.keys--noshake #btn-sound { grid-column: span 4; }
+.keys--noshake #btn-primary { grid-column: span 3; }
+.keys--noshake #btn-pause { grid-column: span 3; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn-row .btn { flex: 1 1 auto; }
+
+/* ---------------------------------------------------------------- 铭牌 / 方块 */
+.plate {
+    display: inline-block;
+    padding: 0 8px;
+    background: var(--paper);
+    color: var(--ink);
+    line-height: var(--lh-1);
+}
+.plate--quiet  { background: var(--ink-3); color: var(--paper); }
+.plate--online { background: var(--green-3); color: var(--ink); }
+
+.sq {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    background: var(--pink-3);
+    border: 4px solid var(--ink);
+}
+.sq--blue   { background: var(--blue-4); }
+.sq--yellow { background: var(--yellow-2); }
+.sq--green  { background: var(--green-3); }
+
+/* ---------------------------------------------------------------- 读数窗 */
+.hud {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+.readout {
+    min-width: 0;
+    padding: 4px 4px 8px;
+    background: var(--paper);
+    border: 4px solid var(--ink);
+    box-shadow: 0 0 0 4px var(--ink-3);
+    text-align: center;
+}
+.readout span { display: block; color: var(--ink-3); line-height: var(--lh-1); }
+.readout b {
+    display: block;
+    overflow: hidden;
+    color: var(--ink);
+    font-size: var(--fs-2);
+    line-height: var(--lh-2);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.readout--life b { color: var(--red-2); }
+.readout--gift b { color: var(--pink-1); }
+.readout b.flash { animation: px-flash 0.24s steps(1, end); }
+.readout b.is-low { color: var(--red-2); animation: px-blink 0.5s steps(1, end) infinite; }
+
+/* ---------------------------------------------------------------- 能量条（RPG 血条式分段） */
+.hud__meters { grid-column: 1 / -1; display: grid; gap: 12px; }
+.meter {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr) 48px;
+    align-items: center;
+    gap: 8px;
+}
+.meter__label,
+.meter__value {
+    color: var(--paper);
+    line-height: var(--lh-1);
+    font-variant-numeric: tabular-nums;
+}
+.meter__value { text-align: right; }
+.meter__value.is-fever { color: var(--yellow-2); animation: px-blink 0.25s steps(1, end) infinite; }
+.meter__track {
+    height: 24px;
+    padding: 4px;
+    background: var(--ink);
+    box-shadow: 0 0 0 4px var(--ink-3);
+}
+.meter__fill {
+    --base: var(--pink-3); --hi: var(--pink-5); --lo: var(--pink-2); --div: var(--pink-1);
+    width: 0;
+    height: 16px;
+    background:
+        repeating-linear-gradient(90deg, transparent 0 12px, var(--div) 12px 16px),
+        linear-gradient(var(--hi) 0 4px, var(--base) 4px 12px, var(--lo) 12px 16px);
+}
+.meter__fill--yellow { --base: var(--yellow-2); --hi: var(--yellow-4); --lo: var(--yellow-3); --div: var(--yellow-1); }
+.meter__fill.is-fever { --base: var(--pink-3); --hi: var(--pink-5); --lo: var(--pink-2); --div: var(--pink-1); }
+
+/* ---------------------------------------------------------------- 输入框（凹槽） */
+.field { display: grid; gap: 4px; margin-bottom: 12px; text-align: left; }
+.field span { color: var(--ink-3); line-height: var(--lh-1); }
+.field input {
+    width: 100%;
+    height: 48px;
+    padding: 0 12px;
+    background: var(--white);
+    color: var(--ink);
+    border: 4px solid var(--ink);
+    box-shadow: inset 4px 4px 0 var(--paper-2);
+    outline: none;
+    font-size: var(--fs-2);
+    line-height: var(--lh-2);
+}
+.field input::placeholder { color: var(--taupe); }
+.field input:focus { border-color: var(--pink-2); box-shadow: inset 4px 4px 0 var(--pink-5), 0 0 0 4px var(--pink-3); }
+
+/* ---------------------------------------------------------------- 弹层内组件 */
+.hints {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px 12px;
+    margin-bottom: 16px;
+    color: var(--ink-3);
+    line-height: var(--lh-1);
+}
+.hints li { display: inline-flex; align-items: center; gap: 4px; }
+
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin-bottom: 16px; }
+.stat {
+    display: flex;
+    justify-content: space-between;
+    gap: 4px;
+    padding: 0 4px;
+    background: var(--paper-2);
+    line-height: var(--lh-2);
+    white-space: nowrap;
+}
+.stat span { color: var(--ink-3); }
+.stat b { color: var(--pink-1); font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------- 标签页（文件夹） */
+.tab {
+    position: relative;
+    min-height: 36px;
+    padding: 4px 16px 8px;
+    background: var(--paper-3);
+    color: var(--ink-3);
+    border: 4px solid transparent;
+    border-image: var(--bi-ink) 4;
+    line-height: var(--lh-1);
+    cursor: pointer;
+}
+.tab:hover { background: var(--paper-2); color: var(--ink); }
+.tab[aria-selected="true"] {
+    z-index: 1;
+    margin-bottom: -4px;
+    padding-bottom: 12px;
+    background: var(--paper);
+    color: var(--ink);
+}
+.tab[aria-selected="true"]::after {          /* 盖住自身与面板的顶边线，连成一体 */
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 4px;
+    background: var(--paper);
+}
+.tab:focus-visible { outline: 4px solid var(--yellow-4); outline-offset: 0; }
+
+/* ---------------------------------------------------------------- 面板内容 */
+.sec {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 4px solid var(--ink);
+    font-size: var(--fs-2);
+    line-height: var(--lh-2);
+}
+.pane p { color: var(--ink); }
+.pane p em {
+    color: var(--pink-1);
+    background: linear-gradient(var(--yellow-2), var(--yellow-2)) left bottom / 100% 4px no-repeat;
+}
+.pane .sub { color: var(--ink-3); }
+.pane .sec + p, .pane .sec + .sub { margin-top: 8px; }
+
+.rules li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 4px 8px;
+    background: var(--paper-2);
+}
+.rules li + li { margin-top: 4px; }
+.rules b { color: var(--pink-1); }
+
+.keymap { display: grid; grid-template-columns: 144px minmax(0, 1fr); gap: 4px 8px; align-items: center; }
+.keymap > div { display: contents; }
+.keymap dt { display: flex; flex-wrap: wrap; gap: 4px; }
+.keymap dd { color: var(--ink-3); }
+.key {
+    display: inline-block;
+    height: 24px;
+    padding: 0 8px;
+    background: var(--white);
+    border: 4px solid var(--ink);
+    box-shadow: 0 4px 0 var(--taupe);       /* 键帽厚度 */
+    line-height: var(--lh-1);
+    white-space: nowrap;
+}
+
+.flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 4px; }
+.flow li { padding: 0 8px; background: var(--paper-2); border: 4px solid var(--ink); line-height: var(--lh-1); }
+.flow li + li::before { content: "▶"; margin-right: 4px; color: var(--pink-3); }
+
+/* ---------------------------------------------------------------- 榜单 */
+.ranks li {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 4px 8px 4px 4px;
+    background: var(--paper-2);
+}
+.ranks li + li { margin-top: 4px; }
+.rank__no {
+    display: grid;
+    place-items: center;
+    height: 24px;
+    background: var(--paper-3);
+    line-height: var(--lh-1);
+    font-variant-numeric: tabular-nums;
+}
+.rank__name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.rank__score { font-variant-numeric: tabular-nums; }
+.ranks li.top1 { background: var(--yellow-2); }
+.ranks li.top2 { background: var(--blue-5); }
+.ranks li.top3 { background: var(--pink-5); }
+.ranks li.is-player { background: var(--yellow-4); box-shadow: inset 0 0 0 4px var(--ink); }
+.ranks li.is-player .rank__name::after { content: "▶"; margin-left: 8px; color: var(--pink-2); animation: px-blink 0.6s steps(1, end) infinite; }
+.ranks li.cut { background: var(--paper); color: var(--taupe); }
+.ranks li.cut .rank__no { background: var(--paper); color: var(--taupe); box-shadow: inset 0 0 0 2px var(--taupe); }
+.ranks__empty { display: block; padding: 16px 8px; background: var(--paper-2); color: var(--ink-3); text-align: center; }
+
+.records > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 32px;
+    padding: 0 8px;
+    background: var(--paper-2);
+    line-height: 24px;
+}
+.records > div + div { margin-top: 4px; }
+.records span { color: var(--ink-3); }
+.records b { color: var(--pink-1); font-variant-numeric: tabular-nums; }
+.records__empty { padding: 16px 8px; background: var(--paper-2); color: var(--ink-3); text-align: center; }
+
+/* ---------------------------------------------------------------- 动效：全部 steps() 逐帧 */
+@keyframes px-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+@keyframes px-flash { 0%, 49% { color: var(--pink-2); } 50%, 100% { color: var(--ink); } }
+@keyframes px-swap  { 0%, 49% { background: var(--pink-3); } 50%, 100% { background: var(--yellow-2); } }
+@keyframes px-pop   { 0% { font-size: var(--fs-3); } 25%, 100% { font-size: var(--fs-6); } }
+@keyframes px-toast {
+    0%   { opacity: 0; transform: translate(-50%, -16px); }
+    20%  { opacity: 1; transform: translate(-50%, 0); }
+    80%  { opacity: 1; transform: translate(-50%, 0); }
+    100% { opacity: 0; transform: translate(-50%, -16px); }
+}
+@keyframes px-shake {
+    0%, 100% { translate: 0 0; }
+    25% { translate: -4px 2px; }
+    50% { translate: 4px -2px; }
+    75% { translate: -2px -2px; }
+}
+.screen__view.shake { animation: px-shake 0.3s steps(1, end); }

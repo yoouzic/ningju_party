@@ -1,0 +1,307 @@
+/* ==========================================================================
+   base.css —— 重置 / 页面骨架 / 掌机外壳 / 屏幕 / 弹层 / 信息面板 / 响应式
+   对应仓库 components.css + pages.css 的「布局层」职责
+   ========================================================================== */
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html {
+    min-width: 320px;
+    background: var(--page);
+}
+
+body {
+    min-width: 320px;
+    min-height: 100dvh;
+    margin: 0;
+    color: var(--ink);
+    font: var(--fs-1) / var(--lh-3) var(--font-stack);
+    /* 页面底纹：每 48px 一个 4px 点阵，代替原先的半透明网格 */
+    background: var(--page) var(--dots-page) repeat;
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+}
+
+h1, h2, h3, p, ol, ul, dl, dd, dt { margin: 0; }
+ol, ul { padding: 0; list-style: none; }
+h1, h2, h3, b, strong, em { font-weight: 400; font-style: normal; }   /* 点阵字体没有粗体，仿粗会发虚 */
+a { color: var(--pink-1); text-decoration: none; }
+a:hover { background: var(--yellow-2); color: var(--ink); }
+button, input { font: inherit; color: inherit; letter-spacing: 0; }
+canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
+.px-icon { display: inline-block; flex: none; line-height: 0; vertical-align: middle; }
+.px-icon canvas { display: block; }
+.hidden { display: none !important; }
+
+/* ---------------------------------------------------------------- 顶栏 */
+.topbar { position: relative; background: var(--ink); color: var(--paper); }
+/* 底边做两级抖动（50% → 25%）过渡到页面底色，代替模糊阴影 */
+.topbar::after {
+    content: "";
+    display: block;
+    height: 16px;
+    background: var(--checker-ink) 0 0 / 8px 8px repeat-x,
+                var(--dots-ink-25) 0 8px / 8px 8px repeat-x;
+}
+.topbar__inner {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: min(calc(100% - 32px), var(--max-w));
+    margin: 0 auto;
+    padding: 16px 0;
+}
+.deco { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.deco .px-icon { position: absolute; animation: px-blink 1.2s steps(1, end) infinite; }
+
+.logo {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 64px;
+    height: 64px;
+    background: var(--paper);
+    border: 4px solid var(--ink);
+    box-shadow: 0 0 0 4px var(--ink-3);       /* 外壳上的浅色垫圈 */
+}
+.topbar__text { flex: 1 1 auto; min-width: 0; }
+.kicker {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-height: 24px;
+    margin-bottom: 4px;
+    color: var(--silver);
+    line-height: var(--lh-1);
+}
+.topbar h1 {
+    color: var(--paper);
+    font-size: var(--fs-2);
+    line-height: var(--lh-2);
+    text-shadow: 4px 4px 0 var(--pink-2);     /* 硬投影，无模糊 */
+}
+.topbar h1 em { color: var(--yellow-2); text-shadow: 4px 4px 0 var(--pink-1); }
+.lede { margin-top: 4px; color: var(--mint); line-height: var(--lh-1); }
+
+.player-chip {
+    flex: none;
+    display: grid;
+    gap: 4px;
+    min-width: 120px;
+    padding: 8px 16px;
+    background: var(--paper);
+    color: var(--ink);
+    border: 4px solid transparent;
+    border-image: var(--bi-ink) 4;
+    text-align: center;
+}
+.player-chip span { color: var(--ink-3); line-height: var(--lh-1); }
+.player-chip b { font-size: var(--fs-2); line-height: var(--lh-2); word-break: break-all; }
+
+/* ---------------------------------------------------------------- 主栅格 */
+.layout {
+    display: grid;
+    /* 左列 412px：扣除外壳与屏幕边框后，屏幕内宽 364px，正好容纳 180×2 的整数倍画布 */
+    grid-template-columns: 412px minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+    width: min(calc(100% - 32px), var(--max-w));
+    margin: 0 auto;
+    padding: 24px 0 48px;
+}
+.console, .info { min-width: 0; }
+
+/* ---------------------------------------------------------------- 掌机外壳 */
+.console {
+    display: grid;
+    gap: 16px;
+    padding: 16px;
+    background: var(--ink-2);
+    color: var(--paper);
+    border: 4px solid transparent;
+    border-image: var(--bi-ink) 4;
+}
+.console__plate {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 16px;
+    color: var(--silver);
+    line-height: var(--lh-1);
+}
+.console__plate .engrave:last-child { margin-left: auto; }   /* 外壳上的刻字 */
+
+/* 状态灯：随游戏状态换色，进行中闪烁 */
+.led {
+    flex: none;
+    width: 12px;
+    height: 12px;
+    background: var(--taupe);
+    box-shadow: 0 0 0 4px var(--ink);
+}
+.console[data-state="countdown"] .led { background: var(--blue-4); animation: px-blink 0.25s steps(1, end) infinite; }
+.console[data-state="playing"]   .led { background: var(--green-3); animation: px-blink 1s steps(1, end) infinite; }
+.console[data-state="paused"]    .led { background: var(--yellow-2); }
+.console[data-state="over"]      .led { background: var(--pink-3); }
+
+/* ---------------------------------------------------------------- 屏幕 */
+.screen {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    background: var(--ink);
+    border: 4px solid var(--ink);
+    box-shadow: 0 0 0 4px var(--ink-3);
+    line-height: 0;
+}
+.screen__view { position: relative; display: block; font-size: var(--fs-1); line-height: var(--lh-3); }
+#game-canvas { display: block; touch-action: none; cursor: pointer; }
+
+/* 弹层：用 50% 棋盘格点阵压暗画面，代替半透明遮罩 + 模糊 */
+.overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    padding: 16px 12px;
+    background: var(--checker-ink) 0 0 / 8px 8px repeat;
+}
+.dialog {
+    position: relative;
+    width: 100%;
+    max-height: 100%;
+    overflow: auto;
+    padding: 24px 16px 16px;
+    background: var(--paper);
+    color: var(--ink);
+    border: 4px solid transparent;
+    border-image: var(--bi-ink) 4;
+    text-align: center;
+}
+.dialog h2 { margin-bottom: 8px; font-size: var(--fs-2); line-height: var(--lh-2); }
+.dialog .desc { margin-bottom: 12px; color: var(--ink-3); text-align: left; }
+.dialog .note { margin-top: 8px; color: var(--ink-3); line-height: var(--lh-1); }
+
+.dialog__tab {
+    position: absolute;
+    top: -12px;
+    left: 12px;
+    padding: 0 8px;
+    color: var(--ink);
+    background: var(--pink-3);
+    border: 4px solid var(--ink);
+    line-height: var(--lh-1);
+}
+.dialog__tab.tab--blue  { background: var(--blue-5); }
+.dialog__tab.tab--win   { background: var(--yellow-2); }
+.dialog__tab.tab--lose  { background: var(--red-2); color: var(--paper); }
+
+/* 倒计时数字 */
+.count {
+    display: block;
+    color: var(--yellow-2);
+    font-size: var(--fs-6);
+    line-height: var(--lh-6);
+    text-shadow: 8px 8px 0 var(--ink);
+    animation: px-pop 0.4s steps(3, end);
+}
+
+/* 屏幕内浮层 */
+.toast {
+    position: absolute;
+    z-index: 6;
+    top: 17%;
+    left: 50%;
+    padding: 0 8px;
+    background: var(--ink);
+    color: var(--paper);
+    line-height: var(--lh-2);
+    white-space: nowrap;
+    transform: translate(-50%, -16px);
+    visibility: hidden;
+}
+.toast.show { visibility: visible; animation: px-toast 1.6s steps(4, end) forwards; }
+
+.fever {
+    position: absolute;
+    z-index: 4;
+    top: 9%;
+    left: 50%;
+    padding: 0 8px;
+    background: var(--pink-3);
+    color: var(--ink);
+    border: 4px solid var(--ink);
+    line-height: var(--lh-1);
+    white-space: nowrap;
+    transform: translateX(-50%);
+    animation: px-swap 0.5s steps(1, end) infinite;
+}
+
+/* ---------------------------------------------------------------- 信息面板（文件夹标签页） */
+.info { display: grid; }
+.tabs {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    gap: 8px;
+    padding: 0 16px;
+}
+.pane {
+    min-height: 320px;
+    padding: 24px;
+    background: var(--paper);
+    border: 4px solid transparent;
+    border-image: var(--bi-ink) 4;
+}
+.pane > * + * { margin-top: 12px; }
+
+/* ---------------------------------------------------------------- 页脚 */
+.site-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px 16px;
+    width: min(calc(100% - 32px), var(--max-w));
+    margin: 0 auto;
+    padding: 0 0 calc(24px + env(safe-area-inset-bottom));
+    color: var(--ink-3);
+    line-height: var(--lh-1);
+}
+
+/* ---------------------------------------------------------------- 响应式 */
+@media (max-width: 860px) {
+    .layout {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 24px;
+        width: min(calc(100% - 24px), 480px);
+        padding-top: 16px;
+    }
+    .topbar__inner { width: calc(100% - 24px); padding: 12px 0; gap: 12px; }
+    .logo { width: 56px; height: 56px; }
+    .lede { display: none; }
+    .player-chip { min-width: 96px; padding: 8px 12px; }
+    .deco { display: none; }
+}
+@media (max-width: 420px) {
+    .console { padding: 12px; gap: 12px; }
+    .pane { padding: 16px; }
+    .player-chip b { font-size: var(--fs-1); line-height: var(--lh-1); }
+    .player-chip { min-width: 84px; }
+    .logo { width: 48px; height: 48px; }
+}
+
+/* 尊重系统减少动效偏好（与仓库 reduced-motion 约定一致） */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+    }
+}

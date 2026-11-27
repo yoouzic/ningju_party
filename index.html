@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2e222f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%232e222f'/%3E%3Crect x='6' y='2' width='4' height='12' fill='%23f9c22b'/%3E%3Crect x='2' y='6' width='12' height='4' fill='%23f9c22b'/%3E%3Crect x='4' y='4' width='8' height='8' fill='%23f04f78'/%3E%3C/svg%3E">
+<title>摇一摇 · 像素冲刺 | 21届凝聚力晚会</title>
+<!--
+  ============================================================================
+  pixel-rush / 「摇一摇 · 像素冲刺」—— 晚会多人互动小游戏模块
+  ----------------------------------------------------------------------------
+  设计依据：
+    1) 21届凝聚力晚会游戏互动与抽奖说明.docx —— 第一环节「摇一摇拼手速」：
+       信息员扫码登录 → 摇动手机竞速 → 大屏展现前 10 名 → 领刮刮乐 + 小礼物。
+    2) github.com/yoouzic/zhaoxin_website —— 沿用其「tokens / 布局 / 组件」三层 CSS
+       与原生 JS 无构建约定，品牌粉蓝色相保持一致。
+
+  视觉体系（见 css/tokens.css 顶部注释）：
+    · 色阶取自开源调色板 Resurrect 64，界面底色为暖纸色，外壳为墨色。
+    · 全部尺寸对齐 4px 网格；Zpix 为 12px 点阵，字号只用 12 的倍数。
+    · 边框用 border-image 九宫格实现 1 单位的像素圆角（NES.css 的做法）。
+
+  两种运行方式：
+    A. 双击本文件（file://）→ 练习模式，成绩不计入晚会榜单，界面会明确标注。
+    B. python server.py → 晚会服务端权威模式：信息员扫码登录领取刮刮乐编号，
+       主持人用 /admin.html 统一开赛，服务端累计有效步数、锁定前 10 名并发奖。
+       /quiz.html 是第②环节，/board.html 是大屏，两种模式由 PG.Net 自动探测。
+  客户端只上报「操作步数」，不能直接提交分数或名次，防伪造由服务端负责。
+  ============================================================================
+-->
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/font.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/pixel-ui.css">
+<link rel="stylesheet" href="css/party.css">
+</head>
+<body>
+<header class="topbar">
+    <div class="topbar__inner">
+        <div class="deco" aria-hidden="true">
+            <i class="px-icon" data-icon="star" data-scale="2" style="right:30%;top:16px"></i>
+            <i class="px-icon" data-icon="star" data-scale="1" style="right:22%;top:48px;animation-delay:.4s"></i>
+            <i class="px-icon" data-icon="scenecloud" data-scale="2" style="right:6%;top:24px"></i>
+        </div>
+        <div class="logo"><i class="px-icon" data-icon="star" data-scale="4"></i></div>
+        <div class="topbar__text">
+            <p class="kicker">
+                <span>21届凝聚力晚会</span><span>环节 01</span>
+                <span class="plate plate--quiet" id="mode-badge">连接中</span>
+            </p>
+            <h1>摇一摇 <em>像素冲刺</em></h1>
+            <p class="lede">扫码登录 → 摇动手机冲过终点 → 冲进大屏前 10 名</p>
+        </div>
+        <div class="player-chip"><span>当前玩家</span><b id="header-player">未登录</b></div>
+    </div>
+</header>
+
+<main class="layout">
+    <!-- ================= 游戏机：墨色外壳 + 纸色读数窗 + 屏幕 + 按键 ================= -->
+    <section class="console" id="console" data-state="ready" aria-label="游戏机">
+        <div class="console__plate">
+            <span class="led" aria-hidden="true"></span>
+            <span class="engrave">PIXEL RUSH · PR-01</span>
+            <span class="engrave" id="state-text">待机</span>
+        </div>
+        <div class="party-bar" id="party-state" role="status" aria-live="polite">连接晚会服务端…</div>
+
+        <div class="hud" id="hud">
+            <div class="readout"><span>得分</span><b id="hud-score">0</b></div>
+            <div class="readout"><span>剩余时间</span><b id="hud-time">45.0</b></div>
+            <div class="readout"><span>名次</span><b id="hud-rank">--</b></div>
+
+            <div class="hud__meters">
+                <div class="meter">
+                    <span class="meter__label">跑道进度</span>
+                    <div class="meter__track" role="progressbar" aria-label="跑道进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar-progress-wrap"><div class="meter__fill meter__fill--pink" id="bar-progress"></div></div>
+                    <b class="meter__value" id="hud-progress">0%</b>
+                </div>
+                <div class="meter">
+                    <span class="meter__label">爆发能量</span>
+                    <div class="meter__track" role="progressbar" aria-label="爆发能量" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar-energy-wrap"><div class="meter__fill meter__fill--yellow" id="bar-energy"></div></div>
+                    <b class="meter__value" id="hud-energy">0%</b>
+                </div>
+            </div>
+
+            <div class="readout"><span>连击</span><b id="hud-combo">0</b></div>
+            <div class="readout readout--life"><span>爱心</span><b id="hud-lives" aria-label="剩余爱心">♥♥♥</b></div>
+            <div class="readout readout--gift"><span>刮刮乐</span><b id="hud-gifts">0</b></div>
+        </div>
+
+        <div class="screen" id="stage">
+            <div class="screen__view" id="screen-view">
+                <canvas id="game-canvas" width="180" height="320" role="img"
+                        aria-label="竖版像素冲刺：角色在下方三条跑道间左右移动，接星星和礼物、躲开自上而下的乌云"></canvas>
+
+                <div class="overlay" id="overlay-ready">
+                    <div class="dialog" role="dialog" aria-labelledby="ready-title">
+                        <span class="dialog__tab tab--pink" id="ready-tab">READY</span>
+                        <h2 id="ready-title">摇一摇 像素冲刺</h2>
+
+                        <!-- 未登录：填写身份；正式模式下该按钮的语义是「登录并进入晚会」 -->
+                        <div id="ready-form">
+                            <label class="field">
+                                <span>信息员昵称</span>
+                                <input id="player-name" type="text" maxlength="12" autocomplete="off" placeholder="例如 小凝">
+                            </label>
+                            <label class="field">
+                                <span>信息员编号（可选，用于身份去重）</span>
+                                <input id="player-code" type="text" maxlength="24" autocomplete="off" placeholder="例如 021">
+                            </label>
+                            <p class="card-tag" id="player-card">刮刮乐编号：---</p>
+                            <ul class="hints">
+                                <li><i class="px-icon" data-icon="star" data-scale="2"></i>接星星礼物</li>
+                                <li><i class="px-icon" data-icon="cloud" data-scale="1"></i>躲乌云</li>
+                                <li>统一开赛冲终点</li>
+                            </ul>
+                            <button class="btn btn--yellow btn--block hidden" id="btn-shake-start" type="button">开启摇一摇</button>
+                            <button class="btn btn--primary btn--block" id="btn-start-inline" type="button"><span class="caret" aria-hidden="true">▶</span><span id="start-inline-label">登录并进入晚会</span></button>
+                            <p class="note">没有陀螺仪？连点屏幕同样可以冲刺</p>
+                        </div>
+
+                        <!-- 已登录：等待主持人开赛，显示分配到的刮刮乐编号 -->
+                        <div id="ready-wait" class="hidden">
+                            <p class="wait__who">信息员 <b id="wait-name">—</b> · 已加入晚会</p>
+                            <p class="card-tag card-tag--big" id="wait-card">刮刮乐编号：---</p>
+                            <p class="wait__text" id="wait-text">等待主持人开赛…</p>
+                            <ul class="hints">
+                                <li><i class="px-icon" data-icon="bolt" data-scale="1"></i>摇动手机加速</li>
+                                <li>连点屏幕换道</li>
+                                <li>前 10 名领奖</li>
+                            </ul>
+                            <button class="btn btn--yellow btn--block hidden" id="btn-shake-wait" type="button">开启摇一摇</button>
+                            <button class="btn btn--block" id="btn-change-player" type="button">更换身份</button>
+                            <p class="note">由主持人统一开赛，请保持本页在前台</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="overlay hidden" id="overlay-countdown">
+                    <span class="count" id="countdown-text">3</span>
+                </div>
+
+                <div class="overlay hidden" id="overlay-paused">
+                    <div class="dialog" role="dialog" aria-labelledby="pause-title">
+                        <span class="dialog__tab tab--blue">PAUSE</span>
+                        <h2 id="pause-title">已暂停</h2>
+                        <div class="btn-row">
+                            <button class="btn btn--primary" id="btn-resume" type="button"><span class="caret" aria-hidden="true">▶</span>继续</button>
+                            <button class="btn" id="btn-pause-restart" type="button">重开</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="overlay hidden" id="overlay-over">
+                    <div class="dialog" role="dialog" aria-live="polite">
+                        <span class="dialog__tab tab--pink" id="result-ribbon">RESULT</span>
+                        <h2 id="result-title">本轮结束</h2>
+                        <p class="desc" id="result-desc"></p>
+                        <div class="stats" id="result-stats"></div>
+                        <button class="btn btn--primary btn--block" id="btn-again" type="button"><span class="caret" aria-hidden="true">▶</span><span id="again-label">再来一局</span></button>
+                        <p class="note" id="result-note">成绩自动同步到晚会大屏</p>
+                    </div>
+                </div>
+
+                <div class="toast" id="stage-toast" role="status" aria-live="polite"></div>
+                <div class="fever hidden" id="fever-flag">FEVER ×1.7</div>
+            </div>
+        </div>
+
+        <div class="keys">
+            <button class="btn btn--primary btn--grow" id="btn-primary" type="button"><span class="caret" aria-hidden="true">▶</span>开始游戏</button>
+            <button class="btn" id="btn-pause" type="button" disabled>暂停</button>
+            <button class="btn btn--blue" id="btn-restart" type="button" disabled>重开</button>
+            <button class="btn" id="btn-sound" type="button" aria-pressed="true">音效 开</button>
+            <button class="btn btn--yellow hidden" id="btn-shake" type="button">摇一摇</button>
+        </div>
+    </section>
+
+    <!-- ================= 信息面板：文件夹式标签页 ================= -->
+    <section class="info" aria-label="玩法与榜单">
+        <div class="tabs" role="tablist" aria-label="信息面板">
+            <button class="tab" role="tab" type="button" id="tab-rules" aria-controls="pane-rules" aria-selected="true">玩法</button>
+            <button class="tab" role="tab" type="button" id="tab-board" aria-controls="pane-board" aria-selected="false" tabindex="-1">榜单</button>
+            <button class="tab" role="tab" type="button" id="tab-record" aria-controls="pane-record" aria-selected="false" tabindex="-1">记录</button>
+        </div>
+
+        <div class="pane" role="tabpanel" id="pane-rules" aria-labelledby="tab-rules">
+            <h2 class="sec"><span class="sq sq--pink" aria-hidden="true"></span>游戏目标</h2>
+            <p>45 秒内把跑道进度推到 <em>100%</em>，并以竞速积分进入全场榜单 <em>前 10 名</em>，即可到舞台左侧领取刮刮乐 ×1 + 小礼物。</p>
+
+            <h2 class="sec"><span class="sq sq--blue" aria-hidden="true"></span>规则</h2>
+            <ul class="rules">
+                <li><i class="px-icon" data-icon="star" data-scale="2"></i><div><b>星星</b> +60 分，连击越高加成越多</div></li>
+                <li><i class="px-icon" data-icon="gift" data-scale="2"></i><div><b>礼物</b> +150 分，集齐 3 个换 1 张刮刮乐</div></li>
+                <li><i class="px-icon" data-icon="heart" data-scale="2"></i><div><b>爱心</b> 回复 1 颗心</div></li>
+                <li><i class="px-icon" data-icon="cloud" data-scale="2"></i><div><b>乌云</b> 扣 1 颗心、速度减半、连击清零</div></li>
+                <li><i class="px-icon" data-icon="bolt" data-scale="2"></i><div><b>FEVER</b> 能量攒满后 5 秒内进度 ×1.7、得分 ×2</div></li>
+            </ul>
+            <p class="sub">3 颗心用完即淘汰；时间耗尽未到终点算未完赛。</p>
+
+            <h2 class="sec"><span class="sq sq--yellow" aria-hidden="true"></span>操作</h2>
+            <dl class="keymap">
+                <div><dt><span class="key">摇一摇</span></dt><dd>晃动手机加速，需先点按钮授权</dd></div>
+                <div><dt><span class="key">连点屏幕</span></dt><dd>点左 / 中 / 右即换道并加速</dd></div>
+                <div><dt><span class="key">← →</span><span class="key">A D</span></dt><dd>键盘换道并加速</dd></div>
+                <div><dt><span class="key">空格</span><span class="key">J K</span></dt><dd>键盘纯加速</dd></div>
+                <div><dt><span class="key">P</span><span class="key">Esc</span></dt><dd>暂停 / 继续</dd></div>
+                <div><dt><span class="key">Enter</span></dt><dd>开始 / 重开</dd></div>
+            </dl>
+
+            <h2 class="sec"><span class="sq sq--green" aria-hidden="true"></span>流程</h2>
+            <ol class="flow">
+                <li>登录</li><li>准备</li><li>倒计时</li><li>冲刺</li><li>结算</li><li>重开</li>
+            </ol>
+        </div>
+
+        <div class="pane" role="tabpanel" id="pane-board" aria-labelledby="tab-board" hidden>
+            <h2 class="sec"><span class="sq sq--yellow" aria-hidden="true"></span>晚会竞速榜 · 前 10 名</h2>
+            <ol class="ranks" id="leaderboard"></ol>
+            <p class="sub" id="board-note">正在连接晚会服务端…</p>
+        </div>
+
+        <div class="pane" role="tabpanel" id="pane-record" aria-labelledby="tab-record" hidden>
+            <h2 class="sec"><span class="sq sq--pink" aria-hidden="true"></span>本机最佳</h2>
+            <div class="records" id="best-record"></div>
+        </div>
+    </section>
+</main>
+
+<footer class="site-footer">
+    <span>① 摇一摇 · <a href="quiz.html">② 答题竞速</a> · <a href="board.html">大屏榜单</a> · <a href="admin.html">主持人控制台</a></span>
+    <span>配色 Resurrect 64 · 字体 Zpix</span>
+</footer>
+
+<!-- 经典脚本按依赖顺序加载：file:// 双击即可运行，无需构建 -->
+<script src="js/config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/layout.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/sprites.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/net.js"></script>
+<script src="js/input.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/game.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
