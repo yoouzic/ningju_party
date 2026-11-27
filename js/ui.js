@@ -189,7 +189,7 @@
 
                 var pg = Math.min(100, s.progress);
                 el.barProgress.style.width = pg.toFixed(1) + '%';
-                el.progress.textContent = Math.floor(pg) + '%';
+                el.progress.textContent = s.online ? String(s.serverSteps) + ' 步' : Math.floor(pg) + '%';
                 el.barProgressWrap.setAttribute('aria-valuenow', String(Math.floor(pg)));
 
                 var fever = s.fever > 0;
@@ -245,7 +245,7 @@
                 }
                 var rows = [
                     ['游玩次数', rec.plays + ' 局'],
-                    ['最高竞速积分', U.group(rec.bestRaceScore)],
+                    ['最高游戏积分', U.group(rec.bestRaceScore)],
                     ['最佳名次', rec.bestRank ? '第 ' + rec.bestRank + ' 名' : '—'],
                     ['最快完赛', rec.bestTime ? rec.bestTime.toFixed(1) + ' 秒' : '—'],
                     ['最高连击', rec.bestCombo + ' HIT'],
@@ -337,9 +337,9 @@
                     (result.rank ? '第 ' + result.rank + ' 名' : (online ? '等待主持人结算' : '待确认'));
                 var stats = [
                     ['用时', result.elapsed.toFixed(1) + ' 秒'],
-                    ['跑道进度', Math.floor(result.progress) + '%'],
+                    ['摇动步数', isPractice ? Math.floor(result.progress) + '%' : (result.serverSteps || 0) + ' 步'],
                     ['收集得分', U.group(result.score)],
-                    ['竞速积分', U.group(result.raceScore)],
+                    ['游戏积分', U.group(result.raceScore)],
                     ['最终名次', rankLabel],
                     ['最高连击', result.comboMax + ' HIT'],
                     ['星星 / 礼物', result.stars + ' / ' + result.gifts],

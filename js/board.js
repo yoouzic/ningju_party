@@ -80,7 +80,7 @@
     }
 
     function boardTitle(kind) {
-        return kind === 'quiz' ? '答题正确榜 · 前 10 名' : '实时竞速榜 · 前 10 名';
+        return kind === 'quiz' ? '答题正确榜 · 前 10 名' : '实时摇动榜 · 前 10 名';
     }
 
     function emptyText(kind) {
@@ -89,7 +89,7 @@
             : '还没有人开始摇动 · 等待第一位信息员';
     }
 
-    /* 摇一摇：名次 / 昵称 / 完赛状态与用时 / 步数
+    /* 摇一摇：名次 / 昵称 / 步数（规定时间内摇得越多越靠前）
        答题：名次 / 昵称 / 用时 / 正确题数 */
     function rowHtml(entry, index, kind) {
         var rank = toInt(entry.rank, index + 1);
@@ -111,16 +111,7 @@
             html += '<span class="bl__meta">' + (used ? '用时 ' + used : '已提交') + '</span>' +
                 '<span class="bl__score">' + scoreText + '</span>';
         } else {
-            /* finished / elapsed 是服务端新增字段，缺失时不臆断完赛状态 */
-            var known = entry.finished !== undefined && entry.finished !== null;
-            var finished = entry.finished === true;
-            var meta = known ? (finished ? '已完赛' : '进行中') : '';
-            if (finished) {
-                var cost = secondsText(entry.elapsed);
-                if (cost) meta += ' · 用时 ' + cost;
-            }
-            html += '<span class="bl__meta' + (known ? (finished ? ' is-done' : ' is-live') : '') + '">' +
-                meta + '</span>' +
+            html += '<span class="bl__meta"></span>' +
                 '<span class="bl__score">' + group(entry.score) + '<small>步</small></span>';
         }
         return html + '</li>';

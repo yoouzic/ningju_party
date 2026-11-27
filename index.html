@@ -52,7 +52,7 @@
                 <span class="plate plate--quiet" id="mode-badge">连接中</span>
             </p>
             <h1>摇一摇 <em>像素冲刺</em></h1>
-            <p class="lede">扫码登录 → 摇动手机冲过终点 → 冲进大屏前 10 名</p>
+            <p class="lede">扫码登录 → 45 秒内尽可能多摇 → 步数冲进大屏前 10 名</p>
         </div>
         <div class="player-chip"><span>当前玩家</span><b id="header-player">未登录</b></div>
     </div>
@@ -75,8 +75,8 @@
 
             <div class="hud__meters">
                 <div class="meter">
-                    <span class="meter__label">跑道进度</span>
-                    <div class="meter__track" role="progressbar" aria-label="跑道进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar-progress-wrap"><div class="meter__fill meter__fill--pink" id="bar-progress"></div></div>
+                    <span class="meter__label">摇动进度</span>
+                    <div class="meter__track" role="progressbar" aria-label="摇动进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar-progress-wrap"><div class="meter__fill meter__fill--pink" id="bar-progress"></div></div>
                     <b class="meter__value" id="hud-progress">0%</b>
                 </div>
                 <div class="meter">
@@ -115,7 +115,7 @@
                             <ul class="hints">
                                 <li><i class="px-icon" data-icon="star" data-scale="2"></i>接星星礼物</li>
                                 <li><i class="px-icon" data-icon="cloud" data-scale="1"></i>躲乌云</li>
-                                <li>统一开赛冲终点</li>
+                                <li>统一开赛比步数</li>
                             </ul>
                             <button class="btn btn--yellow btn--block hidden" id="btn-shake-start" type="button">开启摇一摇</button>
                             <button class="btn btn--primary btn--block" id="btn-start-inline" type="button"><span class="caret" aria-hidden="true">▶</span><span id="start-inline-label">登录并进入晚会</span></button>
@@ -189,7 +189,7 @@
 
         <div class="pane" role="tabpanel" id="pane-rules" aria-labelledby="tab-rules">
             <h2 class="sec"><span class="sq sq--pink" aria-hidden="true"></span>游戏目标</h2>
-            <p>45 秒内把跑道进度推到 <em>100%</em>，并以竞速积分进入全场榜单 <em>前 10 名</em>，即可到舞台左侧领取刮刮乐 ×1 + 小礼物。</p>
+            <p>45 秒内尽可能多地摇动手机，<em>步数</em>进入全场榜单 <em>前 10 名</em>，即可到舞台左侧领取刮刮乐 ×1 + 小礼物。</p>
 
             <h2 class="sec"><span class="sq sq--blue" aria-hidden="true"></span>规则</h2>
             <ul class="rules">

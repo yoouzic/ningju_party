@@ -38,6 +38,7 @@
             fever: 0,
             speed: 0,
             progress: 0,
+            serverSteps: 0,
             scroll: R.scrollSpeed(0),
             lives: C.LIVES,
             stars: 0,
@@ -135,6 +136,7 @@
         PG.Net.step(n).then(function (r) {
             if (!r || self.s !== s || s.phase === PHASE.OVER) return;
             s.progress = Math.max(s.progress, r.progress);
+            s.serverSteps = r.count || s.serverSteps;
             if (r.finished) {
                 s.progress = 100;
                 s.finished = true;
@@ -282,6 +284,7 @@
             result.pending = true;
         }
         result.practice = !!s.practice;
+        result.serverSteps = s.serverSteps;
         s.rank = result.rank;
         var record = ST.commit(result);
         this.lastResult = result;
@@ -412,10 +415,13 @@
 
         if (s.progress >= 100) {
             s.progress = 100;
-            s.finished = true;
-            s.cause = 'finish';
-            this.finish();
-            return;
+            /* 正式模式是「规定时间内摇得最多」的步数榜，不在 100% 处提前结束 */
+            if (!s.online) {
+                s.finished = true;
+                s.cause = 'finish';
+                this.finish();
+                return;
+            }
         }
         if (s.timeLeft <= 0) { s.cause = 'time'; this.finish(); return; }
         if (s.lives <= 0) { s.cause = 'lives'; this.finish(); }

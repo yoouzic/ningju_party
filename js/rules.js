@@ -100,19 +100,19 @@
     function verdict(r) {
         if (r.win) return {
             ribbon: 'CLEAR!', cls: 'tab--win', title: '晋级成功！',
-            desc: '冲过终点并进入晚会竞速榜前 10 名，可到舞台左侧领取刮刮乐 ×1 + 小礼物。'
+            desc: '步数进入晚会摇动榜前 10 名，可到舞台左侧领取刮刮乐 ×1 + 小礼物。'
         };
         if (r.finished) return {
-            ribbon: 'FINISH', cls: '', title: '完赛，但差一点',
-            desc: '已经冲过终点，竞速积分没进前 10。少撞乌云、多攒连击就能更快晋级。'
+            ribbon: 'FINISH', cls: '', title: '达到目标，但差一点',
+            desc: '已经达到进度参考步数，但步数没进前 10。继续摇得更快就能晋级。'
         };
         if (r.cause === 'lives') return {
             ribbon: 'GAME OVER', cls: 'tab--lose', title: '被乌云拦下',
             desc: '3 颗爱心用完了。点左中右提前换道，躲开自上而下的乌云。'
         };
         return {
-            ribbon: 'TIME UP', cls: 'tab--lose', title: '时间到 · 未完赛',
-            desc: '45 秒内没跑到终点。摇得越快越稳，攒满能量触发 FEVER 可大幅提速。'
+            ribbon: 'TIME UP', cls: 'tab--lose', title: '时间到 · 未进前 10',
+            desc: '45 秒内步数没有进入前 10 名。摇得越快越稳，下一轮再试。'
         };
     }
 

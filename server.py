@@ -4,7 +4,7 @@
 
 对应《21届凝聚力晚会游戏互动与抽奖说明.docx》三个环节：
   ① 摇一摇拼手速：主持人后台统一开赛，服务端累计有效步数并权威计时，
-     按到达终点先后锁定前 10 名，发放额外刮刮乐 + 小礼物。
+     规定时间结束后按摇动步数降序锁定前 10 名，发放额外刮刮乐 + 小礼物。
   ② 线上答题竞速：服务端下发题目与计时，按「正确数降序、用时升序」排名。
   ③ 幸运大抽奖：刮刮乐编号 000-199、双抽奖箱（百位 0/1，十位个位 0-9 有放回）、
      幸运转盘 6 种奖品等概率且不放回；库存与每种上限后台可配置，现场再定。
@@ -185,6 +185,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT, detail TEXT, at REAL);
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_steps_rank ON steps(round_id, finished_at, count)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_steps_count ON steps(round_id, count)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_quiz_rank ON quiz_attempts(round_id, correct_count, elapsed_ms)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_draws_card ON draws(card_no, prize_id)")
         for i in range(CARD_TOTAL):
@@ -310,18 +311,12 @@ def rank_rows_conn(conn, kind, round_id):
     round_row = conn.execute("SELECT started_at FROM rounds WHERE id=?", (round_id,)).fetchone()
     started_at = float(round_row["started_at"] or 0) if round_row else 0.0
     if kind == "shake":
-        rows = conn.execute("SELECT s.player_id, p.name, s.rank, s.finished_at, s.count "
+        rows = conn.execute("SELECT s.player_id, p.name, s.rank, s.count "
                             "FROM steps s JOIN players p ON p.id=s.player_id "
                             "WHERE s.round_id=? AND s.count > 0 "
-                            "ORDER BY (s.finished_at IS NULL) ASC, s.finished_at ASC, "
-                            "s.count DESC, s.last_at ASC", (round_id,)).fetchall()
-        out = []
-        for i, r in enumerate(rows):
-            elapsed = round((r["finished_at"] - started_at) * 1000) if r["finished_at"] and started_at else None
-            out.append({"name": r["name"], "player_id": r["player_id"], "rank": r["rank"] or i + 1,
-                        "score": r["count"], "elapsed": elapsed,
-                        "finished": bool(r["finished_at"])})
-        return out
+                            "ORDER BY s.count DESC, s.last_at ASC", (round_id,)).fetchall()
+        return [{"name": r["name"], "player_id": r["player_id"], "rank": r["rank"] or i + 1,
+                 "score": int(r["count"])} for i, r in enumerate(rows)]
     rows = conn.execute("SELECT a.player_id, p.name, a.correct_count, a.total_count, a.elapsed_ms, a.rank "
                         "FROM quiz_attempts a JOIN players p ON p.id=a.player_id WHERE a.round_id=? "
                         "ORDER BY a.correct_count DESC, a.elapsed_ms ASC, a.submitted_at ASC",
@@ -415,15 +410,12 @@ def player_round_result(player_id, round_row):
         return None
     rid = round_row["id"]
     if round_row["kind"] == "shake":
-        row = fetch("SELECT rank, count, finished_at FROM steps WHERE round_id=? AND player_id=?",
+        row = fetch("SELECT rank, count FROM steps WHERE round_id=? AND player_id=?",
                     (rid, player_id), one=True)
         if not row:
             return None
-        started = fetch("SELECT started_at FROM rounds WHERE id=?", (rid,), one=True)
-        started_at = float(started["started_at"] or 0) if started else 0.0
-        elapsed = round((row["finished_at"] - started_at) * 1000) if row["finished_at"] and started_at else None
         return {"kind": "shake", "rank": row["rank"], "score": int(row["count"] or 0),
-                "finished": bool(row["finished_at"]), "elapsed": elapsed}
+                "finished": False}
     if round_row["kind"] == "quiz":
         row = fetch("SELECT rank, correct_count, total_count, elapsed_ms FROM quiz_attempts "
                     "WHERE round_id=? AND player_id=?", (rid, player_id), one=True)
@@ -712,37 +704,22 @@ class Handler(SimpleHTTPRequestHandler):
                         st = c.execute("SELECT * FROM steps WHERE round_id=? AND player_id=?",
                                        (r["id"], pid)).fetchone()
                         count = int(st["count"]) if st else 0
-                        if st and st["finished_at"]:
-                            result = {"progress": 100, "finished": True,
-                                      "rank": st["rank"], "count": count}
-                        else:
-                            last_at = float(st["last_at"]) if st and st["last_at"] else float(rr["started_at"] or now)
-                            rate = float(get_setting("max_rate", MAX_RATE))
-                            if rate <= 0:
-                                rate = MAX_RATE
-                            target = max(1, public_int("target_steps", TARGET_STEPS_DEFAULT))
-                            allowed = max(0, int(max(0.0, now - last_at) * rate))
-                            delta = min(requested, allowed, 12)
-                            if delta <= 0:
-                                result = {"progress": min(100.0, count * 100.0 / target),
-                                          "finished": False, "rank": None, "count": count, "throttled": True}
-                            else:
-                                count += delta
-                                c.execute("INSERT INTO steps(round_id,player_id,count,last_at) VALUES(?,?,?,?) "
-                                          "ON CONFLICT(round_id,player_id) DO UPDATE SET count=excluded.count,last_at=excluded.last_at",
-                                          (r["id"], pid, count, now))
-                                if count >= target:
-                                    rank = c.execute("SELECT COUNT(*) AS n FROM steps "
-                                                     "WHERE round_id=? AND finished_at IS NOT NULL",
-                                                     (r["id"],)).fetchone()["n"] + 1
-                                    c.execute("UPDATE steps SET finished_at=?,rank=? "
-                                              "WHERE round_id=? AND player_id=?",
-                                              (now, rank, r["id"], pid))
-                                    result = {"progress": 100, "finished": True,
-                                              "rank": rank, "count": count}
-                                else:
-                                    result = {"progress": min(100.0, count * 100.0 / target),
-                                              "finished": False, "rank": None, "count": count}
+                        last_at = float(st["last_at"]) if st and st["last_at"] else float(rr["started_at"] or now)
+                        rate = float(get_setting("max_rate", MAX_RATE))
+                        if rate <= 0:
+                            rate = MAX_RATE
+                        target = max(1, public_int("target_steps", TARGET_STEPS_DEFAULT))
+                        allowed = max(0, int(max(0.0, now - last_at) * rate))
+                        delta = min(requested, allowed, 12)
+                        if delta > 0:
+                            count += delta
+                            c.execute("INSERT INTO steps(round_id,player_id,count,last_at) VALUES(?,?,?,?) "
+                                      "ON CONFLICT(round_id,player_id) DO UPDATE SET count=excluded.count,last_at=excluded.last_at",
+                                      (r["id"], pid, count, now))
+                        result = {"progress": min(100.0, count * 100.0 / target),
+                                  "finished": False, "rank": None, "count": count}
+                        if delta <= 0:
+                            result["throttled"] = True
             if expired:
                 close_round(r["id"])
                 return self._api_error("本环节已结束", 409)
