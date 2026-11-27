@@ -270,19 +270,27 @@ def assign_card(player_id, source, round_id=None):
 
 
 def rank_rows(kind, round_id):
+    round_row = fetch("SELECT started_at FROM rounds WHERE id=?", (round_id,), one=True)
+    started_at = float(round_row["started_at"] or 0) if round_row else 0.0
     if kind == "shake":
         rows = fetch("SELECT s.player_id, p.name, s.rank, s.finished_at, s.count "
                      "FROM steps s JOIN players p ON p.id=s.player_id "
-                     "WHERE s.round_id=? AND s.finished_at IS NOT NULL "
-                     "ORDER BY s.finished_at ASC, s.player_id ASC", (round_id,))
-        return [{"name": r["name"], "player_id": r["player_id"], "rank": r["rank"] or i + 1,
-                 "score": r["count"], "elapsed": round((r["finished_at"] or 0) * 1000)} for i, r in enumerate(rows)]
+                     "WHERE s.round_id=? AND s.count > 0 "
+                     "ORDER BY (s.finished_at IS NULL) ASC, s.finished_at ASC, "
+                     "s.count DESC, s.last_at ASC", (round_id,))
+        out = []
+        for i, r in enumerate(rows):
+            elapsed = round((r["finished_at"] - started_at) * 1000) if r["finished_at"] and started_at else None
+            out.append({"name": r["name"], "player_id": r["player_id"], "rank": r["rank"] or i + 1,
+                        "score": r["count"], "elapsed": elapsed,
+                        "finished": bool(r["finished_at"])})
+        return out
     rows = fetch("SELECT a.player_id, p.name, a.correct_count, a.total_count, a.elapsed_ms, a.rank "
                  "FROM quiz_attempts a JOIN players p ON p.id=a.player_id WHERE a.round_id=? "
                  "ORDER BY a.correct_count DESC, a.elapsed_ms ASC, a.submitted_at ASC", (round_id,))
     return [{"name": r["name"], "player_id": r["player_id"], "rank": r["rank"] or i + 1,
              "score": int(r["correct_count"] or 0), "elapsed": int(r["elapsed_ms"] or 0),
-             "total": int(r["total_count"] or 0)} for i, r in enumerate(rows)]
+             "total": int(r["total_count"] or 0), "finished": True} for i, r in enumerate(rows)]
 
 
 def close_round(round_id):
@@ -344,6 +352,32 @@ def board_payload(kind=None):
     return {"kind": k, "round": round_view(r), "entries": rows[:50], "total": len(rows)}
 
 
+def player_round_result(player_id, round_row):
+    if not player_id or not round_row:
+        return None
+    rid = round_row["id"]
+    if round_row["kind"] == "shake":
+        row = fetch("SELECT rank, count, finished_at FROM steps WHERE round_id=? AND player_id=?",
+                    (rid, player_id), one=True)
+        if not row:
+            return None
+        started = fetch("SELECT started_at FROM rounds WHERE id=?", (rid,), one=True)
+        started_at = float(started["started_at"] or 0) if started else 0.0
+        elapsed = round((row["finished_at"] - started_at) * 1000) if row["finished_at"] and started_at else None
+        return {"kind": "shake", "rank": row["rank"], "score": int(row["count"] or 0),
+                "finished": bool(row["finished_at"]), "elapsed": elapsed}
+    if round_row["kind"] == "quiz":
+        row = fetch("SELECT rank, correct_count, total_count, elapsed_ms FROM quiz_attempts "
+                    "WHERE round_id=? AND player_id=?", (rid, player_id), one=True)
+        if not row:
+            return None
+        return {"kind": "quiz", "rank": row["rank"],
+                "correct": int(row["correct_count"] or 0),
+                "total": int(row["total_count"] or 0),
+                "elapsed_ms": int(row["elapsed_ms"] or 0)}
+    return None
+
+
 def status_payload(handler):
     r = current_round()
     players = fetch("SELECT COUNT(*) AS n FROM players", one=True)["n"]
@@ -358,6 +392,9 @@ def status_payload(handler):
         p = fetch("SELECT * FROM players WHERE id=?", (info.get("p"),), one=True)
         if p:
             me = {"id": p["id"], "name": p["name"], "code": p["code"], "card_no": p["card_no"]}
+            result = player_round_result(p["id"], r)
+            if result:
+                me["result"] = result
     return {
         "server_time": time.time(),
         "round": round_view(r),
@@ -653,9 +690,14 @@ class Handler(SimpleHTTPRequestHandler):
                 c.execute("DELETE FROM steps WHERE round_id=?", (rid,))
                 c.execute("DELETE FROM quiz_attempts WHERE round_id=?", (rid,))
                 c.execute("DELETE FROM rewards WHERE round_id=?", (rid,))
+                returned = c.execute(
+                    "UPDATE cards SET owner_id=NULL, source=NULL, round_id=NULL, "
+                    "assigned_at=NULL, claimed_at=NULL, gift_claimed_at=NULL "
+                    "WHERE round_id=? AND source='reward' AND no NOT IN "
+                    "(SELECT card_no FROM draws WHERE card_no IS NOT NULL)", (rid,)).rowcount
                 c.execute("UPDATE rounds SET status='void' WHERE id=?", (rid,))
-            log("void_round", str(rid))
-            return self._json({"ok": True, "round_id": rid})
+            log("void_round", json.dumps({"round_id": rid, "cards_returned": returned}, ensure_ascii=False))
+            return self._json({"ok": True, "round_id": rid, "cards_returned": returned})
         if route == "admin/settings":
             allowed = {"top_n", "duration", "target_steps", "gift_total", "max_rate"}
             changed = {}
